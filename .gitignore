@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+
+# IDE/editor
+.idea/
+.vscode/
+*.iml
+
+# Android/Gradle generated files
+client-android/.gradle/
+client-android/**/build/
+client-android/local.properties
+*.apk
+*.aab
+
+# Swift Package Manager generated files
+server-mac/.build/
+server-mac/.swiftpm/
+
+# Logs and temporary files
+*.log
+tmp/
+temp/
