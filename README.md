@@ -12,7 +12,7 @@
 
 VibeLink is a phone-first remote development controller for macOS. It lets an Android phone view a Mac screen, send precise pointer and keyboard actions, paste text into the active app, trigger saved click points, and run preconfigured development commands over a local network.
 
-The project is currently an end-to-end MVP. It is intentionally lightweight: a Swift command-line server on macOS, a native Android client, MJPEG-over-HTTP screen streaming, and JSON APIs protected by a shared token. The Android client and web admin console both support English and Chinese UI.
+The project is currently an end-to-end MVP. It is intentionally lightweight: a Swift command-line server on macOS, a very small native Android client, MJPEG-over-HTTP screen streaming, and JSON APIs protected by a shared token. The downloadable Android APK is only **878 KB**, so the phone client stays closer to a focused remote control than a heavy remote desktop suite. The Android client and web admin console both support English and Chinese UI.
 
 [中文 README](README.zh-CN.md)
 
@@ -41,6 +41,7 @@ The project is currently an end-to-end MVP. It is intentionally lightweight: a S
 - **Remote input control**: tap, double tap, right click, drag, scroll, cursor move, relative trackpad movement, and common keyboard shortcuts.
 - **Text paste workflow**: send text to the current Mac focus through clipboard paste, with an optional Enter key.
 - **Mobile keyboard bridge**: type from the Android soft keyboard and forward characters, backspace, and Enter to the Mac.
+- **Tiny Android client**: the current downloadable APK is only **878 KB**, keeping installation and updates lightweight.
 - **Bilingual UI**: switch the Android client between English and Chinese, with localized built-in action labels and status messages.
 - **Localized admin console**: manage presets from a web console with a persistent English/Chinese language selector.
 - **Quick texts**: reusable prompts or snippets that can be sent from the phone.

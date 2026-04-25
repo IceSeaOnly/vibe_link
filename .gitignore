@@ -19,5 +19,6 @@ server-mac/.swiftpm/
 
 # Logs and temporary files
 *.log
+dist/
 tmp/
 temp/
