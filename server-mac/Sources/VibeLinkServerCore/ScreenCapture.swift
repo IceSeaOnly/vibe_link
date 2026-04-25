@@ -37,6 +37,12 @@ public enum ScreenProvider {
         return displayIDs.firstIndex(of: CGMainDisplayID()).map { $0 + 1 }
     }
 
+    static func directDisplayID(id: String?) -> CGDirectDisplayID {
+        guard let id else { return CGMainDisplayID() }
+        let displayIDs = activeDisplayIDs()
+        return displayIDs.first(where: { String($0) == id }) ?? CGMainDisplayID()
+    }
+
     private static func activeDisplayIDs() -> [CGDirectDisplayID] {
         var count: UInt32 = 0
         let countResult = CGGetActiveDisplayList(0, nil, &count)
@@ -84,6 +90,14 @@ public enum ScreenProvider {
 }
 
 public enum ScreenCapture {
+    public static func captureImage(displayId: String? = nil) throws -> CGImage {
+        let displayID = ScreenProvider.directDisplayID(id: displayId)
+        guard let image = CGDisplayCreateImage(displayID) else {
+            throw CaptureError.failed("CGDisplayCreateImage failed")
+        }
+        return image
+    }
+
     public static func captureJPEG(displayId: String? = nil) throws -> Data {
         let temporaryURL = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("vibelink-\(UUID().uuidString).jpg")

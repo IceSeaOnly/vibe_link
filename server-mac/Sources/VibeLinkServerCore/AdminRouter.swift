@@ -13,6 +13,19 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
         switch (request.method, request.path) {
         case ("GET", "/"), ("GET", "/admin"):
             return HTTPResponse.html(Self.page)
+        case ("GET", "/admin/api/permissions"):
+            guard authorized(request) else { return unauthorized() }
+            return HTTPResponse.json(PermissionChecker.response())
+        case ("GET", "/admin/api/pairing-info"):
+            guard authorized(request) else { return unauthorized() }
+            return HTTPResponse.json(PairingProvider.info(config: config))
+        case ("GET", "/admin/api/pairing-qr"):
+            guard authorized(request) else { return unauthorized() }
+            do {
+                return HTTPResponse.png(try PairingProvider.qrPNG(config: config))
+            } catch {
+                return HTTPResponse.json(ErrorResponse(ok: false, error: error.localizedDescription), status: 500, reason: "Internal Server Error")
+            }
         case ("GET", "/admin/api/config"):
             guard authorized(request) else { return unauthorized() }
             return HTTPResponse.json(store.snapshot())
@@ -31,7 +44,7 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
     }
 
     private func authorized(_ request: HTTPRequest) -> Bool {
-        Auth.isAuthorized(request: request, config: config)
+        Auth.isAuthorized(request: request, config: config) || request.query["token"] == config.token
     }
 
     private func unauthorized() -> HTTPResponse {
@@ -94,6 +107,18 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
         .shortcut-body{display:grid;grid-template-columns:1fr 1fr;gap:8px}
         .shortcut-body .wide{grid-column:1 / -1}
         .shortcut input{padding:8px 9px;font-size:12px}
+        .status-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+        .status-card{border:1px solid #dbeafe;background:#f8fbff;border-radius:14px;padding:14px}
+        .status-card.ok{border-color:#bbf7d0;background:#f0fdf4}
+        .status-card.warn{border-color:#fed7aa;background:#fff7ed}
+        .status-title{display:flex;align-items:center;justify-content:space-between;gap:12px;font-weight:900}
+        .status-pill{border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900}
+        .status-card.ok .status-pill{background:#dcfce7;color:#166534}
+        .status-card.warn .status-pill{background:#ffedd5;color:#9a3412}
+        .pairing-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:18px;align-items:start}
+        .qr-box{display:grid;place-items:center;border:1px solid #dbeafe;background:white;border-radius:18px;padding:16px}
+        .qr-box img{width:220px;height:220px;image-rendering:pixelated}
+        .copy-box{border:1px solid #e2e8f0;background:#f8fafc;border-radius:12px;padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all}
         .field span{display:block;margin:0 0 5px;color:#64748b;font-size:12px;font-weight:700;text-transform:uppercase}
         .muted{color:#64748b;font-size:13px}
         .tab-button{border:0;background:transparent;color:#475569;border-radius:12px;padding:10px 14px;font-weight:800;white-space:nowrap}
@@ -115,6 +140,7 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
           .command-body{grid-template-columns:1fr}
           .shortcut-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
           .shortcut-body{grid-template-columns:1fr}
+          .status-grid,.pairing-layout{grid-template-columns:1fr}
         }
       </style>
     </head>
@@ -153,6 +179,8 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
             <button id="tabButton-quick" class="tab-button" onclick="showTab('quick')" data-i18n="tabQuick">Quick Replies</button>
             <button id="tabButton-commands" class="tab-button" onclick="showTab('commands')" data-i18n="tabCommands">Commands</button>
             <button id="tabButton-shortcuts" class="tab-button" onclick="showTab('shortcuts')" data-i18n="tabShortcuts">Shortcut Buttons</button>
+            <button id="tabButton-status" class="tab-button" onclick="showTab('status')" data-i18n="tabStatus">Status</button>
+            <button id="tabButton-pairing" class="tab-button" onclick="showTab('pairing')" data-i18n="tabPairing">Pairing</button>
           </nav>
 
           <section id="tab-control" class="tab-panel p-5">
@@ -192,6 +220,40 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
             </div>
             <div id="shortcutButtons" class="list shortcut-grid"></div>
           </section>
+
+          <section id="tab-status" class="tab-panel hidden p-5">
+            <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 class="text-xl font-black" data-i18n="statusTitle">Permissions</h2>
+                <div class="muted mt-1" data-i18n="statusDescription">Check macOS permissions required by screen capture and remote input.</div>
+              </div>
+              <button class="ghost" onclick="loadPermissions()" data-i18n="refresh">Refresh</button>
+            </div>
+            <div id="permissions" class="status-grid"></div>
+          </section>
+
+          <section id="tab-pairing" class="tab-panel hidden p-5">
+            <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 class="text-xl font-black" data-i18n="pairingTitle">Pairing</h2>
+                <div class="muted mt-1" data-i18n="pairingDescription">Scan the QR code from the Android app or use LAN discovery to fill the server URL and token.</div>
+              </div>
+              <button class="ghost" onclick="loadPairing()" data-i18n="refresh">Refresh</button>
+            </div>
+            <div class="pairing-layout">
+              <div class="qr-box"><img id="pairingQr" alt="Pairing QR code"></div>
+              <div class="grid gap-3">
+                <div>
+                  <div class="field"><span data-i18n="pairingUri">Pairing URI</span></div>
+                  <div id="pairingUri" class="copy-box"></div>
+                </div>
+                <div>
+                  <div class="field"><span data-i18n="serverUrls">Server URLs</span></div>
+                  <div id="serverUrls" class="copy-box"></div>
+                </div>
+              </div>
+            </div>
+          </section>
         </div>
         <footer class="mt-8 pb-2 text-center text-xs text-slate-400" data-i18n="copyright">Copyright © Hangzhou Duomo Technology Co., Ltd. All rights reserved.</footer>
       </main>
@@ -208,6 +270,8 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
             tabQuick:'Quick Replies',
             tabCommands:'Commands',
             tabShortcuts:'Shortcut Buttons',
+            tabStatus:'Status',
+            tabPairing:'Pairing',
             controlTitle:'Control Buttons',
             controlDescription:'Drag to reorder the 12 mobile control buttons.',
             quickTitle:'Quick Replies',
@@ -216,6 +280,15 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
             commandsDescription:'Predefine commands shown in the mobile Commands area. Tapping one runs it on the computer server.',
             shortcutsTitle:'Shortcut Buttons',
             shortcutsDescription:'Manage mobile shortcut click points. The mobile app can also add them by dragging a virtual pointer on the screen.',
+            statusTitle:'Permissions',
+            statusDescription:'Check macOS permissions required by screen capture and remote input.',
+            pairingTitle:'Pairing',
+            pairingDescription:'Scan the QR code from the Android app or use LAN discovery to fill the server URL and token.',
+            refresh:'Refresh',
+            granted:'Granted',
+            missing:'Missing',
+            pairingUri:'Pairing URI',
+            serverUrls:'Server URLs',
             addReply:'Add Reply',
             addCommand:'Add Command',
             delete:'Delete',
@@ -246,6 +319,8 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
             tabQuick:'快捷回复',
             tabCommands:'命令',
             tabShortcuts:'快捷按钮',
+            tabStatus:'状态',
+            tabPairing:'配对',
             controlTitle:'控制按钮',
             controlDescription:'拖动调整 12 个移动端控制按钮的位置。',
             quickTitle:'快捷回复',
@@ -254,6 +329,15 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
             commandsDescription:'预先定义移动端命令区域展示的命令，点击后会在电脑服务端执行。',
             shortcutsTitle:'快捷按钮',
             shortcutsDescription:'管理移动端快捷点击点。移动端也可以通过添加快捷按钮在屏幕上拖动虚拟指针录入。',
+            statusTitle:'权限',
+            statusDescription:'检查屏幕采集和远程输入需要的 macOS 权限。',
+            pairingTitle:'配对',
+            pairingDescription:'在 Android 应用中扫描二维码，或使用局域网发现自动填充服务地址和 token。',
+            refresh:'刷新',
+            granted:'已授权',
+            missing:'未授权',
+            pairingUri:'配对 URI',
+            serverUrls:'服务地址',
             addReply:'添加回复',
             addCommand:'添加命令',
             delete:'删除',
@@ -278,7 +362,7 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
         let token = localStorage.getItem('vibelinkAdminToken') || '';
         let config = null;
         let activeTab = 'control';
-        const tabNames = ['control','quick','commands','shortcuts'];
+        const tabNames = ['control','quick','commands','shortcuts','status','pairing'];
         document.getElementById('token').value = token;
         document.getElementById('languageSelect').value = language;
         applyLanguage();
@@ -302,6 +386,8 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
           document.getElementById('saveBar').classList.remove('hidden');
           document.getElementById('saveBar').classList.add('flex');
           render();
+          loadPermissions();
+          loadPairing();
           showTab(activeTab);
         }
         function showTab(name){
@@ -361,6 +447,32 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
           });
         }
         function removeShortcutButton(i){config.shortcutButtons.splice(i,1);renderShortcutButtons();}
+        async function loadPermissions(){
+          const root=document.getElementById('permissions');
+          if(!root) return;
+          const r=await fetch('/admin/api/permissions',{headers:headers()});
+          if(!r.ok){root.innerHTML='';return;}
+          const data=await r.json();
+          root.innerHTML='';
+          (data.permissions||[]).forEach(p=>{
+            const el=document.createElement('div');
+            el.className='status-card '+(p.granted?'ok':'warn');
+            el.innerHTML='<div class="status-title"><span>'+escapeHtml(p.name)+'</span><span class="status-pill">'+escapeHtml(p.granted?t('granted'):t('missing'))+'</span></div><p class="muted mt-3">'+escapeHtml(p.guidance)+'</p>';
+            root.appendChild(el);
+          });
+        }
+        async function loadPairing(){
+          const qr=document.getElementById('pairingQr');
+          const uri=document.getElementById('pairingUri');
+          const urls=document.getElementById('serverUrls');
+          if(!qr||!uri||!urls) return;
+          const r=await fetch('/admin/api/pairing-info',{headers:headers()});
+          if(!r.ok) return;
+          const data=await r.json();
+          qr.src='/admin/api/pairing-qr?token='+encodeURIComponent(token)+'&t='+Date.now();
+          uri.textContent=data.pairingUri||'';
+          urls.textContent=(data.serverUrls||[]).join('\\n');
+        }
         async function save(){
           const r=await fetch('/admin/api/config',{method:'POST',headers:headers(),body:JSON.stringify(config)});
           document.getElementById('status').textContent=r.ok?t('saved'):t('saveFailed');

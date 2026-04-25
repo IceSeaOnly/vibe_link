@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import Network
 
 public protocol HTTPRouting: Sendable {
@@ -8,16 +9,22 @@ public protocol HTTPRouting: Sendable {
 public final class HTTPServer {
     private let config: ServerConfig
     private let router: any HTTPRouting
+    private let publishesBonjour: Bool
     private let queue = DispatchQueue(label: "vibelink.http.server")
     private var listener: NWListener?
 
-    public init(config: ServerConfig, router: any HTTPRouting) {
+    public init(config: ServerConfig, router: any HTTPRouting, publishesBonjour: Bool = true) {
         self.config = config
         self.router = router
+        self.publishesBonjour = publishesBonjour
     }
 
     public func start() throws {
         let listener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: config.port)!)
+        if publishesBonjour {
+            let hostName = Host.current().localizedName ?? "Mac"
+            listener.service = NWListener.Service(name: "VibeLink \(hostName)", type: "_vibelink._tcp")
+        }
         self.listener = listener
         let startup = DispatchSemaphore(value: 0)
         var startupError: NWError?
@@ -75,6 +82,14 @@ public final class HTTPServer {
                 }
                 if request.method == "GET", request.path == "/stream" {
                     self.handleStream(request, connection: connection)
+                    return
+                }
+                if request.method == "GET", request.path == "/stream-ws" {
+                    self.handleWebSocketStream(request, connection: connection)
+                    return
+                }
+                if request.method == "GET", request.path == "/stream-h264" {
+                    self.handleH264Stream(request, connection: connection)
                     return
                 }
                 Task {
@@ -147,6 +162,161 @@ public final class HTTPServer {
                 connection.cancel()
             }
         }
+    }
+
+    private func handleWebSocketStream(_ request: HTTPRequest, connection: NWConnection) {
+        guard Auth.isStreamAuthorized(request: request, config: config) else {
+            send(.json(ErrorResponse(ok: false, error: "Unauthorized"), status: 401, reason: "Unauthorized"), on: connection)
+            return
+        }
+        guard request.headers["upgrade"]?.lowercased() == "websocket",
+              let key = request.headers["sec-websocket-key"],
+              let accept = webSocketAccept(key: key) else {
+            send(.text("Bad WebSocket Request", status: 400, reason: "Bad Request"), on: connection)
+            return
+        }
+
+        let header = """
+        HTTP/1.1 101 Switching Protocols\r
+        Upgrade: websocket\r
+        Connection: Upgrade\r
+        Sec-WebSocket-Accept: \(accept)\r
+        Cache-Control: no-cache\r
+        \r
+
+        """
+        connection.send(content: Data(header.utf8), completion: .contentProcessed { [weak self] error in
+            guard error == nil else {
+                connection.cancel()
+                return
+            }
+            self?.sendNextWebSocketFrame(on: connection, displayId: request.query["displayId"])
+        })
+    }
+
+    private func sendNextWebSocketFrame(on connection: NWConnection, displayId: String?) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            do {
+                let jpeg = try ScreenCapture.captureJPEG(displayId: displayId)
+                let frame = self.webSocketBinaryFrame(payload: jpeg)
+                connection.send(content: frame, completion: .contentProcessed { [weak self] error in
+                    if let error {
+                        print("WebSocket stream write failed: \(error)")
+                        connection.cancel()
+                        return
+                    }
+                    self?.queue.asyncAfter(deadline: .now() + .milliseconds(100)) {
+                        self?.sendNextWebSocketFrame(on: connection, displayId: displayId)
+                    }
+                })
+            } catch {
+                print("WebSocket screen capture failed: \(error.localizedDescription)")
+                connection.cancel()
+            }
+        }
+    }
+
+    private func handleH264Stream(_ request: HTTPRequest, connection: NWConnection) {
+        guard Auth.isStreamAuthorized(request: request, config: config) else {
+            send(.json(ErrorResponse(ok: false, error: "Unauthorized"), status: 401, reason: "Unauthorized"), on: connection)
+            return
+        }
+        guard request.headers["upgrade"]?.lowercased() == "websocket",
+              let key = request.headers["sec-websocket-key"],
+              let accept = webSocketAccept(key: key) else {
+            send(.text("Bad WebSocket Request", status: 400, reason: "Bad Request"), on: connection)
+            return
+        }
+
+        let header = """
+        HTTP/1.1 101 Switching Protocols\r
+        Upgrade: websocket\r
+        Connection: Upgrade\r
+        Sec-WebSocket-Accept: \(accept)\r
+        Cache-Control: no-cache\r
+        X-VibeLink-Video: h264-annexb\r
+        \r
+
+        """
+        connection.send(content: Data(header.utf8), completion: .contentProcessed { [weak self] error in
+            guard error == nil else {
+                connection.cancel()
+                return
+            }
+            self?.startH264Frames(on: connection, displayId: request.query["displayId"])
+        })
+    }
+
+    private func startH264Frames(on connection: NWConnection, displayId: String?) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            do {
+                let display = ScreenProvider.display(id: displayId)
+                let settings = H264StreamSettings.lowLatency
+                let encoder = try H264VideoEncoder(width: display.width, height: display.height, settings: settings)
+                self.sendNextH264Frame(on: connection, displayId: displayId, encoder: encoder, settings: settings)
+            } catch {
+                print("H.264 stream setup failed: \(error.localizedDescription)")
+                connection.cancel()
+            }
+        }
+    }
+
+    private func sendNextH264Frame(on connection: NWConnection, displayId: String?, encoder: H264VideoEncoder, settings: H264StreamSettings) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            do {
+                let image = try ScreenCapture.captureImage(displayId: displayId)
+                guard let payload = try encoder.encode(image: image), !payload.isEmpty else {
+                    self.queue.asyncAfter(deadline: .now() + .milliseconds(settings.frameIntervalMilliseconds)) {
+                        self.sendNextH264Frame(on: connection, displayId: displayId, encoder: encoder, settings: settings)
+                    }
+                    return
+                }
+                let frame = self.webSocketBinaryFrame(payload: payload)
+                connection.send(content: frame, completion: .contentProcessed { [weak self] error in
+                    if let error {
+                        print("H.264 stream write failed: \(error)")
+                        connection.cancel()
+                        return
+                    }
+                    self?.queue.asyncAfter(deadline: .now() + .milliseconds(settings.frameIntervalMilliseconds)) {
+                        self?.sendNextH264Frame(on: connection, displayId: displayId, encoder: encoder, settings: settings)
+                    }
+                })
+            } catch {
+                print("H.264 screen capture failed: \(error.localizedDescription)")
+                connection.cancel()
+            }
+        }
+    }
+
+    private func webSocketAccept(key: String) -> String? {
+        let magic = key.trimmingCharacters(in: .whitespacesAndNewlines) + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+        guard let data = magic.data(using: .utf8) else { return nil }
+        let digest = Insecure.SHA1.hash(data: data)
+        return Data(digest).base64EncodedString()
+    }
+
+    private func webSocketBinaryFrame(payload: Data) -> Data {
+        var frame = Data()
+        frame.append(0x82)
+        if payload.count < 126 {
+            frame.append(UInt8(payload.count))
+        } else if payload.count <= UInt16.max {
+            frame.append(126)
+            frame.append(UInt8((payload.count >> 8) & 0xff))
+            frame.append(UInt8(payload.count & 0xff))
+        } else {
+            frame.append(127)
+            let length = UInt64(payload.count)
+            for shift in stride(from: 56, through: 0, by: -8) {
+                frame.append(UInt8((length >> UInt64(shift)) & 0xff))
+            }
+        }
+        frame.append(payload)
+        return frame
     }
 }
 

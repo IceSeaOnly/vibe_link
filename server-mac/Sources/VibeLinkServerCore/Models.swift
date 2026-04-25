@@ -5,8 +5,32 @@ public struct HealthResponse: Codable {
     public let name: String
     public let version: String
     public let streamUrl: String
+    public let lowLatencyStreamUrl: String
+    public let videoStreamUrl: String
     public let screen: ScreenInfo
     public let displays: [DisplayInfo]
+}
+
+public struct PermissionStatus: Codable, Sendable {
+    public let id: String
+    public let name: String
+    public let granted: Bool
+    public let required: Bool
+    public let guidance: String
+}
+
+public struct PermissionsResponse: Codable, Sendable {
+    public let ok: Bool
+    public let permissions: [PermissionStatus]
+}
+
+public struct PairingInfo: Codable, Sendable {
+    public let appName: String
+    public let version: String
+    public let serverUrls: [String]
+    public let adminUrls: [String]
+    public let token: String
+    public let pairingUri: String
 }
 
 public struct ScreenInfo: Codable, Sendable {

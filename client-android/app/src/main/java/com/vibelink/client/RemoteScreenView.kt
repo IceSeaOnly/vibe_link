@@ -32,6 +32,7 @@ class RemoteScreenView @JvmOverloads constructor(
         fun onCurrentDragEnd()
         fun onScroll(deltaX: Int, deltaY: Int)
         fun onShortcutPointSelected(x: Int, y: Int, imageWidth: Int, imageHeight: Int)
+        fun onViewportChanged(geometry: ImageGeometry)
     }
 
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
@@ -70,6 +71,11 @@ class RemoteScreenView @JvmOverloads constructor(
             field = value
             invalidate()
         }
+    var videoUnderlayMode: Boolean = false
+        set(value) {
+            field = value
+            invalidate()
+        }
     var interactionMode: InteractionMode = InteractionMode.SCREEN
         set(value) {
             field = value
@@ -79,9 +85,14 @@ class RemoteScreenView @JvmOverloads constructor(
             isLongDragging = false
             isTrackpadDragging = false
             dragStartImage = null
+            if (value == InteractionMode.SCREEN && !shortcutCaptureMode) {
+                cursorImageX = null
+                cursorImageY = null
+            }
             if (value == InteractionMode.TRACKPAD) {
                 bitmap?.let { ensureTrackpadCursor(it) }
             }
+            notifyViewportChanged()
         }
 
     fun zoomIn() {
@@ -114,6 +125,7 @@ class RemoteScreenView @JvmOverloads constructor(
         if (interactionMode == InteractionMode.TRACKPAD) {
             ensureTrackpadCursor(frame)
         }
+        notifyViewportChanged(frame)
         invalidate()
     }
 
@@ -125,9 +137,12 @@ class RemoteScreenView @JvmOverloads constructor(
     }
 
     override fun onDraw(canvas: Canvas) {
-        canvas.drawColor(Color.rgb(18, 24, 38))
+        if (!videoUnderlayMode) {
+            canvas.drawColor(Color.rgb(18, 24, 38))
+        }
         val frame = bitmap
         if (frame == null) {
+            if (videoUnderlayMode) return
             paint.color = Color.WHITE
             paint.textSize = 16f * resources.displayMetrics.scaledDensity
             canvas.drawText(noFrameText, 24f, height / 2f, paint)
@@ -138,12 +153,14 @@ class RemoteScreenView @JvmOverloads constructor(
         val destinationTop = geometry.offsetY
         val destinationRight = geometry.offsetX + frame.width * geometry.scale
         val destinationBottom = geometry.offsetY + frame.height * geometry.scale
-        canvas.drawBitmap(
-            frame,
-            null,
-            RectF(destinationLeft, destinationTop, destinationRight, destinationBottom),
-            paint
-        )
+        if (!videoUnderlayMode) {
+            canvas.drawBitmap(
+                frame,
+                null,
+                RectF(destinationLeft, destinationTop, destinationRight, destinationBottom),
+                paint
+            )
+        }
         drawCursor(canvas, geometry)
     }
 
@@ -196,6 +213,7 @@ class RemoteScreenView @JvmOverloads constructor(
                     panY += event.y - lastMoveY
                     lastMoveX = event.x
                     lastMoveY = event.y
+                    notifyViewportChanged(frame)
                     invalidate()
                 } else if (interactionMode == InteractionMode.TRACKPAD) {
                     handleTrackpadMove(event)
@@ -317,6 +335,7 @@ class RemoteScreenView @JvmOverloads constructor(
             MotionEvent.ACTION_MOVE -> {
                 if (multiStartDistance > 0f) {
                     zoomMultiplier = (multiStartZoom * (distance / multiStartDistance)).coerceIn(1f, 5f)
+                    notifyViewportChanged()
                     invalidate()
                 }
             }
@@ -462,6 +481,7 @@ class RemoteScreenView @JvmOverloads constructor(
     }
 
     private fun drawCursor(canvas: Canvas, geometry: ImageGeometry) {
+        if (interactionMode == InteractionMode.SCREEN && !shortcutCaptureMode) return
         val imageX = cursorImageX ?: return
         val imageY = cursorImageY ?: return
         val x = geometry.offsetX + imageX * geometry.scale
@@ -521,7 +541,17 @@ class RemoteScreenView @JvmOverloads constructor(
         zoomMultiplier = result.zoom
         panX = result.panX
         panY = result.panY
+        notifyViewportChanged(frame)
         invalidate()
+    }
+
+    private fun notifyViewportChanged(frame: Bitmap? = bitmap) {
+        val currentFrame = frame ?: return
+        if (width <= 0 || height <= 0) {
+            post { notifyViewportChanged(currentFrame) }
+            return
+        }
+        listener?.onViewportChanged(currentGeometry(currentFrame))
     }
 
     private fun maybeSendMove(x: Int, y: Int, frame: Bitmap) {

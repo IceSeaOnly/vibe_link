@@ -60,8 +60,10 @@ final class ServerCoreTests: XCTestCase {
         let response = HealthResponse(
             ok: true,
             name: "VibeLink Mac Server",
-            version: "0.1.0",
+            version: "0.2.0",
             streamUrl: "/stream",
+            lowLatencyStreamUrl: "/stream-ws",
+            videoStreamUrl: "/stream-h264",
             screen: ScreenInfo(width: 1512, height: 982, scale: 2),
             displays: [display]
         )
@@ -69,7 +71,48 @@ final class ServerCoreTests: XCTestCase {
         let data = try JSONCoding.encoder.encode(response)
         let json = try XCTUnwrap(String(data: data, encoding: .utf8))
         XCTAssertTrue(json.contains("\"displays\""))
+        XCTAssertTrue(json.contains("\"lowLatencyStreamUrl\""))
+        XCTAssertTrue(json.contains("\"videoStreamUrl\""))
         XCTAssertTrue(json.contains("\"Built-in Display\""))
+    }
+
+    func testH264AnnexBWrapsNalUnitsWithStartCodes() {
+        let payload = H264AnnexB.wrap(nalUnits: [Data([0x67, 0x01]), Data([0x68, 0x02])])
+
+        XCTAssertEqual(payload, Data([0, 0, 0, 1, 0x67, 0x01, 0, 0, 0, 1, 0x68, 0x02]))
+    }
+
+    func testH264LowLatencySettingsPreferShortQueueOverHighFrameRate() {
+        let settings = H264StreamSettings.lowLatency
+
+        XCTAssertEqual(settings.fps, 20)
+        XCTAssertEqual(settings.bitRate, 3_000_000)
+        XCTAssertEqual(settings.keyFrameInterval, 20)
+        XCTAssertEqual(settings.frameIntervalMilliseconds, 50)
+    }
+
+    func testPairingInfoIncludesLanUrlsAndToken() {
+        let config = ServerConfig(port: 8765, adminPort: 8766, token: "secret")
+        let info = PairingProvider.info(config: config)
+
+        XCTAssertEqual(info.token, "secret")
+        XCTAssertTrue(info.pairingUri.contains("vibelink://pair"))
+        XCTAssertTrue(info.pairingUri.contains("token=secret"))
+        XCTAssertFalse(info.serverUrls.isEmpty)
+        XCTAssertTrue(info.adminUrls.allSatisfy { $0.hasSuffix("/admin") })
+    }
+
+    func testPermissionsRouteRequiresAuth() async throws {
+        let store = AdminConfigStore(url: FileManager.default.temporaryDirectory.appendingPathComponent("vibelink-\(UUID().uuidString).json"))
+        let config = ServerConfig(port: 8765, token: "secret")
+        let router = Router(config: config, registry: PresetRegistry(workingDirectory: "/tmp"), commandRunner: CommandRunner(), store: store)
+
+        let unauthorized = await router.route(HTTPRequest(method: "GET", path: "/api/permissions", query: [:], headers: [:], body: Data()))
+        let authorized = await router.route(HTTPRequest(method: "GET", path: "/api/permissions", query: [:], headers: ["authorization": "Bearer secret"], body: Data()))
+
+        XCTAssertEqual(unauthorized.status, 401)
+        XCTAssertEqual(authorized.status, 200)
+        XCTAssertNoThrow(try JSONCoding.decoder.decode(PermissionsResponse.self, from: authorized.body))
     }
 
     func testDisplayPointMappingUsesGlobalDisplayOrigin() {

@@ -12,6 +12,7 @@ public final class AppTextTest {
         assertEquals("VibeLink", AppText.text(AppText.Key.BRAND, AppLanguage.EN), "brand");
         assertEquals("Connect", AppText.text(AppText.Key.CONNECT, AppLanguage.EN), "connect");
         assertEquals("Text to send", AppText.text(AppText.Key.TEXT_TO_SEND, AppLanguage.EN), "text hint");
+        assertEquals("Find", AppText.text(AppText.Key.FIND_SERVER, AppLanguage.EN), "find");
         assertEquals("Copyright © Hangzhou Duomo Technology Co., Ltd. All rights reserved.", AppText.text(AppText.Key.COPYRIGHT, AppLanguage.EN), "copyright");
     }
 
@@ -19,6 +20,7 @@ public final class AppTextTest {
         assertEquals("鹊桥", AppText.text(AppText.Key.BRAND, AppLanguage.ZH), "brand");
         assertEquals("连接", AppText.text(AppText.Key.CONNECT, AppLanguage.ZH), "connect");
         assertEquals("待发送文本", AppText.text(AppText.Key.TEXT_TO_SEND, AppLanguage.ZH), "text hint");
+        assertEquals("发现", AppText.text(AppText.Key.FIND_SERVER, AppLanguage.ZH), "find");
         assertEquals("版权所有 © 杭州多模科技有限公司", AppText.text(AppText.Key.COPYRIGHT, AppLanguage.ZH), "copyright");
     }
 

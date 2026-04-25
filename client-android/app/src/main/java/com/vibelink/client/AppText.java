@@ -10,6 +10,8 @@ public final class AppText {
         CONNECTING,
         DISCONNECT,
         AUTH,
+        FIND_SERVER,
+        SCAN_PAIRING,
         TOKEN,
         FRAME,
         NO_FRAME,
@@ -61,7 +63,12 @@ public final class AppText {
         SWITCH_INTERACTION_MODE,
         KEYBOARD_OPEN,
         KEYBOARD_CLOSED,
-        COPYRIGHT
+        COPYRIGHT,
+        DISCOVERING,
+        DISCOVERY_FAILED,
+        SERVER_FOUND,
+        PAIRING_APPLIED,
+        PAIRING_INVALID
     }
 
     private static final Map<Key, String> EN = new HashMap<>();
@@ -81,6 +88,8 @@ public final class AppText {
         put(Key.CONNECTING, "Connecting...", "连接中...");
         put(Key.DISCONNECT, "Disconnect", "断开");
         put(Key.AUTH, "Auth", "认证");
+        put(Key.FIND_SERVER, "Find", "发现");
+        put(Key.SCAN_PAIRING, "Scan", "扫码");
         put(Key.TOKEN, "Token", "令牌");
         put(Key.FRAME, "Frame", "画面");
         put(Key.NO_FRAME, "No frame", "无画面");
@@ -133,6 +142,11 @@ public final class AppText {
         put(Key.KEYBOARD_OPEN, "Keyboard open", "键盘已打开");
         put(Key.KEYBOARD_CLOSED, "Keyboard closed", "键盘已关闭");
         put(Key.COPYRIGHT, "Copyright © Hangzhou Duomo Technology Co., Ltd. All rights reserved.", "版权所有 © 杭州多模科技有限公司");
+        put(Key.DISCOVERING, "Discovering VibeLink server...", "正在发现 VibeLink 服务...");
+        put(Key.DISCOVERY_FAILED, "No VibeLink server found", "未发现 VibeLink 服务");
+        put(Key.SERVER_FOUND, "Server found", "已发现服务");
+        put(Key.PAIRING_APPLIED, "Pairing applied", "已填入配对信息");
+        put(Key.PAIRING_INVALID, "Invalid pairing QR", "配对二维码无效");
 
         putControl("sendText", "Send Text", "发送文本");
         putControl("backspace", "Backspace", "退格");

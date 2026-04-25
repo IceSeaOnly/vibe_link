@@ -2,11 +2,16 @@ package com.vibelink.client
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Bitmap
+import android.graphics.Matrix
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
+import android.net.Uri
+import android.net.nsd.NsdManager
+import android.net.nsd.NsdServiceInfo
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -16,6 +21,7 @@ import android.text.TextWatcher
 import android.text.InputType
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.BaseInputConnection
@@ -36,7 +42,7 @@ import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import org.json.JSONObject
-import java.io.InputStream
+import java.io.Closeable
 import java.util.concurrent.Executors
 
 class MainActivity : Activity(), RemoteScreenView.Listener {
@@ -55,9 +61,12 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
     private lateinit var configEditButton: Button
     private lateinit var languageButton: Button
     private lateinit var mainConnectionButton: Button
+    private lateinit var discoverButton: Button
+    private lateinit var scanButton: Button
     private lateinit var rootScroll: ScrollView
     private lateinit var statusText: TextView
     private lateinit var frameText: TextView
+    private lateinit var videoView: TextureView
     private lateinit var screenView: RemoteScreenView
     private lateinit var modeButton: ImageButton
     private lateinit var displayContainer: LinearLayout
@@ -79,7 +88,8 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
     private lateinit var outputText: TextView
     private lateinit var copyrightText: TextView
     private var apiClient: ApiClient? = null
-    private var streamInput: InputStream? = null
+    private var streamInput: Closeable? = null
+    private var discoveryListener: NsdManager.DiscoveryListener? = null
     private var streamGeneration = 0
     private var healthGeneration = 0
     private var healthFailures = 0
@@ -164,8 +174,89 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
 
     override fun onDestroy() {
         super.onDestroy()
+        stopDiscovery()
         setDisconnected(t(AppText.Key.DISCONNECTED))
         executor.shutdownNow()
+    }
+
+    @Deprecated("Deprecated Android callback kept for the minimal Activity implementation.")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == QR_SCAN_REQUEST && resultCode == RESULT_OK) {
+            val uri = data?.getStringExtra(QrScanActivity.EXTRA_PAIRING_URI).orEmpty()
+            applyPairingUri(uri)
+        }
+    }
+
+    private fun applyPairingUri(raw: String) {
+        try {
+            val uri = Uri.parse(raw)
+            val url = uri.getQueryParameter("url").orEmpty()
+            val token = uri.getQueryParameter("token").orEmpty()
+            if (uri.scheme != "vibelink" || uri.host != "pair" || url.isBlank() || token.isBlank()) {
+                showError(t(AppText.Key.PAIRING_INVALID))
+                return
+            }
+            serverInput.setText(url)
+            tokenInput.setText(token)
+            prefs.edit().putString("serverUrl", url).putString("token", token).apply()
+            isConfigExpanded = true
+            updateConfigVisibility()
+            showStatus(t(AppText.Key.PAIRING_APPLIED))
+        } catch (_: Exception) {
+            showError(t(AppText.Key.PAIRING_INVALID))
+        }
+    }
+
+    private fun discoverServer() {
+        stopDiscovery()
+        showStatus(t(AppText.Key.DISCOVERING))
+        val manager = getSystemService(NSD_SERVICE) as NsdManager
+        val listener = object : NsdManager.DiscoveryListener {
+            override fun onDiscoveryStarted(serviceType: String) = Unit
+            override fun onDiscoveryStopped(serviceType: String) = Unit
+            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
+                stopDiscovery()
+                mainHandler.post { showError(t(AppText.Key.DISCOVERY_FAILED)) }
+            }
+
+            override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) = Unit
+
+            override fun onServiceLost(serviceInfo: NsdServiceInfo) = Unit
+
+            override fun onServiceFound(serviceInfo: NsdServiceInfo) {
+                if (!serviceInfo.serviceType.lowercase().contains("_vibelink._tcp")) return
+                manager.resolveService(serviceInfo, object : NsdManager.ResolveListener {
+                    override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) = Unit
+                    override fun onServiceResolved(resolved: NsdServiceInfo) {
+                        val host = resolved.host?.hostAddress ?: return
+                        val url = "http://$host:${resolved.port}"
+                        mainHandler.post {
+                            serverInput.setText(url)
+                            prefs.edit().putString("serverUrl", url).apply()
+                            showStatus("${t(AppText.Key.SERVER_FOUND)}: $url")
+                            stopDiscovery()
+                        }
+                    }
+                })
+            }
+        }
+        discoveryListener = listener
+        manager.discoverServices("_vibelink._tcp.", NsdManager.PROTOCOL_DNS_SD, listener)
+        mainHandler.postDelayed({
+            if (discoveryListener === listener) {
+                stopDiscovery()
+                showStatus(t(AppText.Key.DISCOVERY_FAILED))
+            }
+        }, 8000L)
+    }
+
+    private fun stopDiscovery() {
+        val listener = discoveryListener ?: return
+        discoveryListener = null
+        runCatching {
+            (getSystemService(NSD_SERVICE) as NsdManager).stopServiceDiscovery(listener)
+        }
     }
 
     private fun buildUi() {
@@ -177,6 +268,13 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         val screenContainer = FrameLayout(this).apply {
             setBackgroundColor(0xFF121826.toInt())
         }
+        videoView = TextureView(this).apply {
+            visibility = View.GONE
+        }
+        screenContainer.addView(
+            videoView,
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        )
         screenView = RemoteScreenView(this).apply {
             listener = this@MainActivity
             minimumHeight = dp(300)
@@ -209,9 +307,9 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         }
         screenContainer.addView(
             modeButton,
-            FrameLayout.LayoutParams(dp(40), dp(40), Gravity.TOP or Gravity.END).apply {
-                topMargin = dp(8)
-                rightMargin = dp(8)
+            FrameLayout.LayoutParams(dp(40), dp(40), Gravity.BOTTOM or Gravity.START).apply {
+                leftMargin = dp(8)
+                bottomMargin = dp(8)
             }
         )
         root.addView(screenContainer, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(320)))
@@ -282,6 +380,12 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         }
         configContainer.addView(serverInput, matchWrap().apply { bottomMargin = dp(8) })
         configContainer.addView(tokenInput, matchWrap().apply { bottomMargin = dp(8) })
+        val pairingRow = row()
+        discoverButton = button(t(AppText.Key.FIND_SERVER), ButtonStyle.GHOST) { discoverServer() }
+        scanButton = button(t(AppText.Key.SCAN_PAIRING), ButtonStyle.GHOST) { startActivityForResult(Intent(this, QrScanActivity::class.java), QR_SCAN_REQUEST) }
+        pairingRow.addView(discoverButton, weightWrap(isFirst = true))
+        pairingRow.addView(scanButton, weightWrap(isLast = true))
+        configContainer.addView(pairingRow, rowWrap())
         content.addView(configContainer, matchWrap())
 
         displayContainer = LinearLayout(this).apply {
@@ -450,6 +554,8 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
             connectionState = ConnectionState.DISCONNECTED
             statusText.text = reason
             frameText.text = "${t(AppText.Key.FRAME)}: -"
+            if (::videoView.isInitialized) videoView.visibility = View.GONE
+            if (::screenView.isInitialized) screenView.videoUnderlayMode = false
             displayContainer.visibility = View.GONE
             updateConnectionUi()
             if (showToast) Toast.makeText(this, reason, Toast.LENGTH_SHORT).show()
@@ -533,30 +639,104 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         streamInput?.close()
         streamInput = null
         executor.execute {
+            var h264Rendered = false
             try {
-                val input = client.openStream(displayId)
-                streamInput = input
-                MjpegStreamReader(input).readFrames { frame ->
-                    if (generation != streamGeneration) return@readFrames
-                    mainHandler.post { updateFrame(frame) }
+                val width = evenDimension(lastScreenWidth.takeIf { it > 0 } ?: remoteDisplays.firstOrNull { it.id == displayId }?.width ?: client.getHealth().screenWidth)
+                val height = evenDimension(lastScreenHeight.takeIf { it > 0 } ?: remoteDisplays.firstOrNull { it.id == displayId }?.height ?: client.getHealth().screenHeight)
+                val h264Reader = H264StreamReader.connect(serverInput.text.toString().trim(), tokenInput.text.toString().trim(), displayId)
+                val player = H264VideoStreamPlayer(videoView)
+                streamInput = Closeable {
+                    player.close()
+                    h264Reader.close()
+                }
+                mainHandler.post { prepareVideoFrame(width, height) }
+                player.play(h264Reader, width, height) {
+                    if (generation != streamGeneration) return@play
+                    h264Rendered = true
+                    mainHandler.post { updateVideoFrame(width, height) }
                 }
                 if (generation == streamGeneration) {
                     mainHandler.post { setDisconnected(t(AppText.Key.STREAM_ENDED)) }
                 }
-            } catch (error: Exception) {
-                if (generation == streamGeneration) {
-                    mainHandler.post { setDisconnected("${t(AppText.Key.STREAM_ERROR)} ${error.shortMessage()}") }
+            } catch (videoError: Exception) {
+                streamInput?.close()
+                streamInput = null
+                if (h264Rendered) {
+                    if (generation == streamGeneration) {
+                        mainHandler.post { setDisconnected("${t(AppText.Key.STREAM_ERROR)} ${videoError.shortMessage()}") }
+                    }
+                    return@execute
+                }
+                try {
+                    val reader = try {
+                        WebSocketFrameReader.connect(serverInput.text.toString().trim(), tokenInput.text.toString().trim(), displayId)
+                    } catch (_: Exception) {
+                        null
+                    }
+                    if (reader != null) {
+                        streamInput = reader
+                        reader.readFrames { frame ->
+                            if (generation != streamGeneration) return@readFrames
+                            mainHandler.post { updateFrame(frame) }
+                        }
+                    } else {
+                        val input = client.openStream(displayId)
+                        streamInput = input
+                        MjpegStreamReader(input).readFrames { frame ->
+                            if (generation != streamGeneration) return@readFrames
+                            mainHandler.post { updateFrame(frame) }
+                        }
+                    }
+                    if (generation == streamGeneration) {
+                        mainHandler.post { setDisconnected(t(AppText.Key.STREAM_ENDED)) }
+                    }
+                } catch (error: Exception) {
+                    if (generation == streamGeneration) {
+                        mainHandler.post { setDisconnected("${t(AppText.Key.STREAM_ERROR)} ${error.shortMessage()}") }
+                    }
                 }
             }
         }
     }
 
+    private fun prepareVideoFrame(width: Int, height: Int) {
+        lastScreenWidth = width
+        lastScreenHeight = height
+        videoView.visibility = View.VISIBLE
+        screenView.videoUnderlayMode = true
+        screenView.setFrame(Bitmap.createBitmap(width.coerceAtLeast(2), height.coerceAtLeast(2), Bitmap.Config.ARGB_8888))
+    }
+
+    private fun updateVideoFrame(width: Int, height: Int) {
+        lastScreenWidth = width
+        lastScreenHeight = height
+        frameText.text = "${t(AppText.Key.FRAME)}: H.264 ${width}x${height} ${System.currentTimeMillis()}"
+    }
+
     private fun updateFrame(frame: Bitmap) {
         lastScreenWidth = frame.width
         lastScreenHeight = frame.height
+        if (::videoView.isInitialized) videoView.visibility = View.GONE
+        screenView.videoUnderlayMode = false
         screenView.setFrame(frame)
         frameText.text = "${t(AppText.Key.FRAME)}: ${frame.width}x${frame.height} ${System.currentTimeMillis()}"
     }
+
+    private fun applyVideoTransform(geometry: ImageGeometry) {
+        videoView.post {
+            if (videoView.width <= 0 || videoView.height <= 0 || geometry.imageWidth <= 0 || geometry.imageHeight <= 0) return@post
+            val drawnWidth = geometry.imageWidth * geometry.scale
+            val drawnHeight = geometry.imageHeight * geometry.scale
+            val scaleX = drawnWidth / videoView.width.toFloat()
+            val scaleY = drawnHeight / videoView.height.toFloat()
+            val matrix = Matrix()
+            matrix.setScale(scaleX, scaleY)
+            matrix.postTranslate(geometry.offsetX, geometry.offsetY)
+            videoView.setTransform(matrix)
+        }
+    }
+
+    private fun evenDimension(value: Int): Int = value.coerceAtLeast(2).let { it - (it % 2) }
 
     private fun compactDisplayAdapter(labels: List<String>): ArrayAdapter<String> {
         return object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, labels) {
@@ -814,6 +994,12 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
             .show()
     }
 
+    override fun onViewportChanged(geometry: ImageGeometry) {
+        if (::videoView.isInitialized && videoView.visibility == View.VISIBLE) {
+            applyVideoTransform(geometry)
+        }
+    }
+
     private fun saveShortcutPoint(name: String, x: Int, y: Int, imageWidth: Int, imageHeight: Int) {
         val client = apiClient ?: return showError(t(AppText.Key.NOT_CONNECTED_ERROR))
         val button = ShortcutButton(
@@ -1041,6 +1227,8 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
             title = t(AppText.Key.BRAND)
         }
         if (::configEditButton.isInitialized) configEditButton.text = t(AppText.Key.AUTH)
+        if (::discoverButton.isInitialized) discoverButton.text = t(AppText.Key.FIND_SERVER)
+        if (::scanButton.isInitialized) scanButton.text = t(AppText.Key.SCAN_PAIRING)
         if (::displayLabel.isInitialized) displayLabel.text = t(AppText.Key.DISPLAY)
         if (::scrollUpButton.isInitialized) scrollUpButton.text = t(AppText.Key.SCROLL_UP)
         if (::scrollDownButton.isInitialized) scrollDownButton.text = t(AppText.Key.SCROLL_DOWN)
@@ -1198,6 +1386,10 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         val stroke: Int,
         val text: Int
     )
+
+    companion object {
+        private const val QR_SCAN_REQUEST = 2048
+    }
 }
 
 private fun JSONObject.putScreen(width: Int, height: Int): JSONObject {

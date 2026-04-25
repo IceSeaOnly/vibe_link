@@ -15,7 +15,7 @@ public final class Router: HTTPRouting, @unchecked Sendable {
 
     public func route(_ request: HTTPRequest) async -> HTTPResponse {
         if request.method == "GET", request.path == "/health" {
-            return HTTPResponse.json(HealthResponse(ok: true, name: "VibeLink Mac Server", version: "0.1.0", streamUrl: "/stream", screen: ScreenProvider.currentScreenInfo(), displays: ScreenProvider.displays()))
+            return HTTPResponse.json(HealthResponse(ok: true, name: "VibeLink Mac Server", version: "0.2.0", streamUrl: "/stream", lowLatencyStreamUrl: "/stream-ws", videoStreamUrl: "/stream-h264", screen: ScreenProvider.currentScreenInfo(), displays: ScreenProvider.displays()))
         }
 
         guard Auth.isAuthorized(request: request, config: config) else {
@@ -26,6 +26,12 @@ public final class Router: HTTPRouting, @unchecked Sendable {
             switch (request.method, request.path) {
             case ("GET", "/api/displays"):
                 return HTTPResponse.json(ScreenProvider.displays())
+
+            case ("GET", "/api/permissions"):
+                return HTTPResponse.json(PermissionChecker.response())
+
+            case ("GET", "/api/pairing-info"):
+                return HTTPResponse.json(PairingProvider.info(config: config))
 
             case ("GET", "/api/client-config"):
                 return HTTPResponse.json(store.snapshot())

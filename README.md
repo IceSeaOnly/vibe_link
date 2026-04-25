@@ -12,7 +12,7 @@
 
 VibeLink is a phone-first remote development controller for macOS. It lets an Android phone view a Mac screen, send precise pointer and keyboard actions, paste text into the active app, trigger saved click points, and run preconfigured development commands over a local network.
 
-The project is currently an end-to-end MVP. It is intentionally lightweight: a Swift command-line server on macOS, a very small native Android client, MJPEG-over-HTTP screen streaming, and JSON APIs protected by a shared token. The downloadable Android APK is only **878 KB**, so the phone client stays closer to a focused remote control than a heavy remote desktop suite. The Android client and web admin console both support English and Chinese UI.
+The project is currently an end-to-end MVP. It is intentionally lightweight: a Swift command-line server on macOS, a compact native Android client, H.264-over-WebSocket screen streaming with JPEG/MJPEG fallbacks, and JSON APIs protected by a shared token. The downloadable Android APK is still only about **1.1 MB**, so the phone client stays closer to a focused remote control than a heavy remote desktop suite. The Android client and web admin console both support English and Chinese UI.
 
 [中文 README](README.zh-CN.md)
 
@@ -35,14 +35,17 @@ The project is currently an end-to-end MVP. It is intentionally lightweight: a S
 
 ## Features
 
-- **Live Mac screen stream**: the macOS server captures the display with `screencapture` and serves it as an MJPEG stream.
+- **Low-latency Mac screen stream**: the macOS server captures the display and serves H.264 Annex-B video over WebSocket, with JPEG WebSocket and MJPEG fallbacks.
 - **Display selection**: the server exposes active macOS displays and the Android client can switch streams by display.
 - **Three mobile interaction modes**: screen view, pointer click mode, and trackpad mode.
+- **Frame dropping for low latency**: the Android H.264 player drains the socket on a reader thread, drops stale frames, and recovers from the latest keyframe.
 - **Remote input control**: tap, double tap, right click, drag, scroll, cursor move, relative trackpad movement, and common keyboard shortcuts.
 - **Text paste workflow**: send text to the current Mac focus through clipboard paste, with an optional Enter key.
 - **Mobile keyboard bridge**: type from the Android soft keyboard and forward characters, backspace, and Enter to the Mac.
-- **Tiny Android client**: the current downloadable APK is only **878 KB**, keeping installation and updates lightweight.
+- **Tiny Android client**: the current downloadable APK is about **1.1 MB**, keeping installation and updates lightweight.
 - **Bilingual UI**: switch the Android client between English and Chinese, with localized built-in action labels and status messages.
+- **Discovery and QR pairing**: the server advertises itself on the LAN, exposes pairing metadata, and the Android client can fill connection details by discovery or QR scan.
+- **macOS permission status**: the admin console reports Screen Recording and Accessibility permission status with setup guidance.
 - **Localized admin console**: manage presets from a web console with a persistent English/Chinese language selector.
 - **Quick texts**: reusable prompts or snippets that can be sent from the phone.
 - **Preconfigured commands**: run server-side command presets and poll command output from Android.
@@ -80,7 +83,7 @@ VibeLink is less suited for full-time remote desktop work, general IT helpdesk s
 
 Modern AI-assisted development changed the shape of remote work. Many sessions now involve starting an agent, watching it edit and test code, then giving small corrections when it gets blocked. The work is not always "open an IDE and type for hours"; often it is "observe, approve, paste, run, click, and redirect."
 
-Traditional remote desktop software can show the screen, but it usually treats the phone as a tiny desktop monitor. Terminal tools are efficient, but they cannot see a browser popup, IDE state, desktop permission prompt, or visual preview. VibeLink was created to cover that middle ground for local Mac development: screen visibility, precise interaction, reusable developer actions, and a lightweight protocol that can evolve from the current MJPEG MVP toward lower-latency transports later.
+Traditional remote desktop software can show the screen, but it usually treats the phone as a tiny desktop monitor. Terminal tools are efficient, but they cannot see a browser popup, IDE state, desktop permission prompt, or visual preview. VibeLink was created to cover that middle ground for local Mac development: screen visibility, precise interaction, reusable developer actions, and a lightweight H.264-first transport designed for short remote interventions.
 
 ## Screenshots
 
@@ -100,10 +103,10 @@ Traditional remote desktop software can show the screen, but it usually treats t
 
 ```mermaid
 flowchart LR
-    Android["Android Client<br/>Native Kotlin UI"] -->|"GET /health<br/>GET /stream?token=..."| Server["macOS Server<br/>SwiftPM CLI"]
+    Android["Android Client<br/>Native Kotlin UI"] -->|"GET /health<br/>WS /stream-h264?token=..."| Server["macOS Server<br/>SwiftPM CLI"]
     Android -->|"POST /api/control<br/>POST /api/commands/run"| Server
     Admin["Web Admin Console<br/>port + 1"] -->|"GET/POST /admin/api/config"| Server
-    Server --> Capture["Screen Capture<br/>screencapture"]
+    Server --> Capture["Screen Capture + H.264<br/>CGDisplay + VideoToolbox"]
     Server --> Input["Input Simulation<br/>CGEvent + Clipboard"]
     Server --> Commands["Preset Commands<br/>zsh -lc"]
     Server --> Config["Admin Config<br/>Application Support/VibeLink"]
@@ -117,10 +120,10 @@ flowchart LR
 - Runtime shape: command-line service process
 - Default app port: `8765`
 - Default admin port: `8766`
-- Screen stream: `multipart/x-mixed-replace` MJPEG
+- Screen stream: H.264 Annex-B over WebSocket, JPEG WebSocket fallback, and MJPEG HTTP fallback
 - Control channel: HTTP JSON API
 - Input simulation: macOS `CGEvent` and clipboard
-- Screen capture: `/usr/sbin/screencapture`
+- Screen capture: `CGDisplayCreateImage`; H.264 encoding through VideoToolbox
 
 ### Android client
 
@@ -133,7 +136,7 @@ flowchart LR
 - Target SDK: 35
 - UI: native Android views
 - Network layer: standard `HttpURLConnection`
-- Stream rendering: multipart MJPEG parsing into `Bitmap`
+- Stream rendering: H.264 through `MediaCodec` into `TextureView`, with bitmap fallback streams
 - Localization: Java-backed text tables, Android string resources, and in-app language toggle
 
 ## Repository Layout
@@ -210,7 +213,7 @@ cd client-android
 ./gradlew installDebug
 ```
 
-Launch VibeLink on Android, enter the Mac LAN URL and token, then tap **Connect**.
+Launch VibeLink on Android, use **Find** or **Scan** to fill the Mac LAN URL and token, then tap **Connect**. Manual URL and token entry remains available under **Auth**.
 
 Use the language button in the app header to switch between English and Chinese UI text.
 
@@ -247,8 +250,12 @@ GET /stream?token=<token>&displayId=<display-id>
 | Method | Path | Description |
 | --- | --- | --- |
 | `GET` | `/health` | Server health, screen info, and display list |
-| `GET` | `/stream?token=<token>` | MJPEG screen stream |
+| `GET` | `/stream?token=<token>` | MJPEG fallback screen stream |
+| `GET` | `/stream-ws?token=<token>` | JPEG WebSocket fallback screen stream |
+| `GET` | `/stream-h264?token=<token>` | H.264 Annex-B WebSocket screen stream |
 | `GET` | `/api/displays` | Active macOS display list |
+| `GET` | `/api/permissions` | macOS permission status and guidance |
+| `GET` | `/api/pairing-info` | LAN URLs, token, and QR pairing payload |
 | `GET` | `/api/client-config` | Full mobile configuration snapshot |
 | `POST` | `/api/control` | Pointer, keyboard, scroll, text, and clipboard actions |
 | `GET` | `/api/quick-texts` | Quick text presets |
@@ -278,7 +285,7 @@ VibeLink's MVP is local-first and uses shared-token authentication.
 
 - The server listens on `0.0.0.0` by default so Android devices on the same LAN can connect.
 - `GET /health` is unauthenticated.
-- `/stream` requires `token=<token>` in the query string.
+- `/stream`, `/stream-ws`, and `/stream-h264` require `token=<token>` in the query string.
 - JSON APIs require `Authorization: Bearer <token>`.
 - Commands are executed only from server-side presets.
 - The mobile client cannot submit arbitrary shell commands through the normal command API.
@@ -313,8 +320,8 @@ Useful documents:
 
 ## Roadmap
 
-- Replace MJPEG with WebRTC or another lower-latency transport.
-- Add stronger pairing with device keys and QR-code onboarding.
+- Evaluate WebRTC or hardware capture paths for lower latency and better network adaptation.
+- Add device-key-based trust on top of the current shared-token pairing flow.
 - Add end-to-end encryption beyond the current shared-token MVP.
 - Support window-level or region-level capture.
 - Improve shortcut buttons with accessibility element lookup or visual matching.

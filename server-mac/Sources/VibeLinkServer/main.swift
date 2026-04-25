@@ -15,7 +15,7 @@ do {
     let router = Router(config: config, registry: registry, commandRunner: runner, store: store)
     let adminRouter = AdminRouter(config: config, store: store)
     let server = HTTPServer(config: config, router: router)
-    let adminServer = HTTPServer(config: ServerConfig(port: config.adminPort, adminPort: config.adminPort, token: config.token), router: adminRouter)
+    let adminServer = HTTPServer(config: ServerConfig(port: config.adminPort, adminPort: config.adminPort, token: config.token), router: adminRouter, publishesBonjour: false)
 
     try server.start()
     try adminServer.start()

@@ -46,6 +46,10 @@ public struct HTTPResponse: Sendable {
         HTTPResponse(status: status, reason: reason, headers: ["Content-Type": "text/html; charset=utf-8"], body: Data(html.utf8))
     }
 
+    public static func png(_ data: Data, status: Int = 200, reason: String = "OK") -> HTTPResponse {
+        HTTPResponse(status: status, reason: reason, headers: ["Content-Type": "image/png", "Cache-Control": "no-store"], body: data)
+    }
+
     public func serialized() -> Data {
         var lines = ["HTTP/1.1 \(status) \(reason)"]
         var mergedHeaders = headers
