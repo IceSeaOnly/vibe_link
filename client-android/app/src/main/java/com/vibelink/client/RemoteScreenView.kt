@@ -65,6 +65,11 @@ class RemoteScreenView @JvmOverloads constructor(
     private var panY = 0f
     private var shortcutCaptureMode = false
     var listener: Listener? = null
+    var noFrameText: String = "No frame"
+        set(value) {
+            field = value
+            invalidate()
+        }
     var interactionMode: InteractionMode = InteractionMode.SCREEN
         set(value) {
             field = value
@@ -125,7 +130,7 @@ class RemoteScreenView @JvmOverloads constructor(
         if (frame == null) {
             paint.color = Color.WHITE
             paint.textSize = 16f * resources.displayMetrics.scaledDensity
-            canvas.drawText("No frame", 24f, height / 2f, paint)
+            canvas.drawText(noFrameText, 24f, height / 2f, paint)
             return
         }
         val geometry = currentGeometry(frame)

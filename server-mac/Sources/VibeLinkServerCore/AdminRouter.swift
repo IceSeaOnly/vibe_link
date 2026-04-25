@@ -40,7 +40,7 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
 
     private static let page = """
     <!doctype html>
-    <html lang="zh-CN">
+    <html lang="en">
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -122,34 +122,43 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
       <main class="mx-auto max-w-6xl px-5 py-6">
         <header class="mb-6 flex items-start justify-between gap-4">
           <div class="min-w-0">
-            <h1 class="text-2xl font-black tracking-tight sm:text-3xl">VibeLink Admin</h1>
-            <p class="mt-1 hidden text-sm text-slate-500 sm:block">Manage mobile controls, replies, commands, and shortcut click points.</p>
+            <h1 class="text-2xl font-black tracking-tight sm:text-3xl" data-i18n="adminTitle">VibeLink Admin</h1>
+            <p class="mt-1 hidden text-sm text-slate-500 sm:block" data-i18n="subtitle">Manage mobile controls, replies, commands, and shortcut click points.</p>
           </div>
-          <div id="saveBar" class="hidden shrink-0 items-center gap-3">
-            <span id="status" class="text-sm text-slate-500"></span>
-            <button class="primary px-5 py-2.5" onclick="save()">Save</button>
+          <div class="flex shrink-0 items-center gap-3">
+            <label class="flex items-center gap-2 text-sm font-bold text-slate-500">
+              <span data-i18n="language">Language</span>
+              <select id="languageSelect" class="w-auto rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm font-bold text-slate-700 outline-none" onchange="setLanguage(this.value)">
+                <option value="en">English</option>
+                <option value="zh">中文</option>
+              </select>
+            </label>
+            <div id="saveBar" class="hidden shrink-0 items-center gap-3">
+              <span id="status" class="text-sm text-slate-500"></span>
+              <button class="primary px-5 py-2.5" onclick="save()" data-i18n="save">Save</button>
+            </div>
           </div>
         </header>
 
         <div id="login" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div class="flex gap-3">
-            <input id="token" type="password" placeholder="Token" class="min-w-0 flex-1">
-            <button class="primary" onclick="login()">Enter</button>
+            <input id="token" type="password" placeholder="Token" data-i18n-placeholder="tokenPlaceholder" class="min-w-0 flex-1">
+            <button class="primary" onclick="login()" data-i18n="enter">Enter</button>
           </div>
         </div>
 
         <div id="app" class="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <nav class="flex gap-2 overflow-x-auto border-b border-slate-200 bg-slate-100/70 p-2">
-            <button id="tabButton-control" class="tab-button" onclick="showTab('control')">Control Buttons</button>
-            <button id="tabButton-quick" class="tab-button" onclick="showTab('quick')">Quick Replies</button>
-            <button id="tabButton-commands" class="tab-button" onclick="showTab('commands')">Commands</button>
-            <button id="tabButton-shortcuts" class="tab-button" onclick="showTab('shortcuts')">Shortcut Buttons</button>
+            <button id="tabButton-control" class="tab-button" onclick="showTab('control')" data-i18n="tabControl">Control Buttons</button>
+            <button id="tabButton-quick" class="tab-button" onclick="showTab('quick')" data-i18n="tabQuick">Quick Replies</button>
+            <button id="tabButton-commands" class="tab-button" onclick="showTab('commands')" data-i18n="tabCommands">Commands</button>
+            <button id="tabButton-shortcuts" class="tab-button" onclick="showTab('shortcuts')" data-i18n="tabShortcuts">Shortcut Buttons</button>
           </nav>
 
           <section id="tab-control" class="tab-panel p-5">
             <div class="mb-4">
-              <h2 class="text-xl font-black">Control Buttons</h2>
-              <div class="muted mt-1">拖动调整 12 个移动端按钮的位置。</div>
+              <h2 class="text-xl font-black" data-i18n="controlTitle">Control Buttons</h2>
+              <div class="muted mt-1" data-i18n="controlDescription">Drag to reorder the 12 mobile control buttons.</div>
             </div>
             <div id="buttons" class="list button-grid"></div>
           </section>
@@ -157,10 +166,10 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
           <section id="tab-quick" class="tab-panel hidden p-5">
             <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h2 class="text-xl font-black">Quick Replies</h2>
-                <div class="muted mt-1">拖动调整顺序；移动端会轮询刷新。点击移动端按钮会直接发送内容到电脑。</div>
+                <h2 class="text-xl font-black" data-i18n="quickTitle">Quick Replies</h2>
+                <div class="muted mt-1" data-i18n="quickDescription">Drag to reorder; the mobile app refreshes by polling. Tapping a mobile button sends its content directly to the computer.</div>
               </div>
-              <button class="ghost" onclick="addQuickText()">Add Reply</button>
+              <button class="ghost" onclick="addQuickText()" data-i18n="addReply">Add Reply</button>
             </div>
             <div id="quickTexts" class="list quick-grid"></div>
           </section>
@@ -168,30 +177,120 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
           <section id="tab-commands" class="tab-panel hidden p-5">
             <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h2 class="text-xl font-black">Commands</h2>
-                <div class="muted mt-1">预先定义移动端 Commands 区域展示的命令，点击后会在电脑服务端执行。</div>
+                <h2 class="text-xl font-black" data-i18n="commandsTitle">Commands</h2>
+                <div class="muted mt-1" data-i18n="commandsDescription">Predefine commands shown in the mobile Commands area. Tapping one runs it on the computer server.</div>
               </div>
-              <button class="ghost" onclick="addCommand()">Add Command</button>
+              <button class="ghost" onclick="addCommand()" data-i18n="addCommand">Add Command</button>
             </div>
             <div id="commands" class="list command-grid"></div>
           </section>
 
           <section id="tab-shortcuts" class="tab-panel hidden p-5">
             <div class="mb-4">
-              <h2 class="text-xl font-black">Shortcut Buttons</h2>
-              <div class="muted mt-1">管理移动端快捷点击点。移动端也可以通过 Add Shortcut 在屏幕上拖动虚拟指针录入。</div>
+              <h2 class="text-xl font-black" data-i18n="shortcutsTitle">Shortcut Buttons</h2>
+              <div class="muted mt-1" data-i18n="shortcutsDescription">Manage mobile shortcut click points. The mobile app can also add them by dragging a virtual pointer on the screen.</div>
             </div>
             <div id="shortcutButtons" class="list shortcut-grid"></div>
           </section>
         </div>
+        <footer class="mt-8 pb-2 text-center text-xs text-slate-400" data-i18n="copyright">Copyright © Hangzhou Duomo Technology Co., Ltd. All rights reserved.</footer>
       </main>
       <script>
+        const translations = {
+          en: {
+            adminTitle:'VibeLink Admin',
+            subtitle:'Manage mobile controls, replies, commands, and shortcut click points.',
+            language:'Language',
+            save:'Save',
+            enter:'Enter',
+            tokenPlaceholder:'Token',
+            tabControl:'Control Buttons',
+            tabQuick:'Quick Replies',
+            tabCommands:'Commands',
+            tabShortcuts:'Shortcut Buttons',
+            controlTitle:'Control Buttons',
+            controlDescription:'Drag to reorder the 12 mobile control buttons.',
+            quickTitle:'Quick Replies',
+            quickDescription:'Drag to reorder; the mobile app refreshes by polling. Tapping a mobile button sends its content directly to the computer.',
+            commandsTitle:'Commands',
+            commandsDescription:'Predefine commands shown in the mobile Commands area. Tapping one runs it on the computer server.',
+            shortcutsTitle:'Shortcut Buttons',
+            shortcutsDescription:'Manage mobile shortcut click points. The mobile app can also add them by dragging a virtual pointer on the screen.',
+            addReply:'Add Reply',
+            addCommand:'Add Command',
+            delete:'Delete',
+            label:'Label',
+            content:'Content',
+            name:'Name',
+            workingDir:'Working Dir',
+            command:'Command',
+            requireConfirmation:'Require confirmation',
+            shortcut:'Shortcut',
+            screenW:'Screen W',
+            screenH:'Screen H',
+            saved:'Saved',
+            saveFailed:'Save failed',
+            newReply:'New Reply',
+            newContent:'New content',
+            newCommand:'New Command',
+            copyright:'Copyright © Hangzhou Duomo Technology Co., Ltd. All rights reserved.'
+          },
+          zh: {
+            adminTitle:'VibeLink 管理端',
+            subtitle:'管理移动端控制按钮、快捷回复、命令和快捷点击点。',
+            language:'语言',
+            save:'保存',
+            enter:'进入',
+            tokenPlaceholder:'令牌',
+            tabControl:'控制按钮',
+            tabQuick:'快捷回复',
+            tabCommands:'命令',
+            tabShortcuts:'快捷按钮',
+            controlTitle:'控制按钮',
+            controlDescription:'拖动调整 12 个移动端控制按钮的位置。',
+            quickTitle:'快捷回复',
+            quickDescription:'拖动调整顺序；移动端会轮询刷新。点击移动端按钮会直接发送内容到电脑。',
+            commandsTitle:'命令',
+            commandsDescription:'预先定义移动端命令区域展示的命令，点击后会在电脑服务端执行。',
+            shortcutsTitle:'快捷按钮',
+            shortcutsDescription:'管理移动端快捷点击点。移动端也可以通过添加快捷按钮在屏幕上拖动虚拟指针录入。',
+            addReply:'添加回复',
+            addCommand:'添加命令',
+            delete:'删除',
+            label:'标签',
+            content:'内容',
+            name:'名称',
+            workingDir:'工作目录',
+            command:'命令',
+            requireConfirmation:'需要确认',
+            shortcut:'快捷按钮',
+            screenW:'屏幕宽',
+            screenH:'屏幕高',
+            saved:'已保存',
+            saveFailed:'保存失败',
+            newReply:'新回复',
+            newContent:'新内容',
+            newCommand:'新命令',
+            copyright:'版权所有 © 杭州多模科技有限公司'
+          }
+        };
+        let language = localStorage.getItem('vibelinkAdminLanguage') || 'en';
         let token = localStorage.getItem('vibelinkAdminToken') || '';
         let config = null;
         let activeTab = 'control';
         const tabNames = ['control','quick','commands','shortcuts'];
         document.getElementById('token').value = token;
+        document.getElementById('languageSelect').value = language;
+        applyLanguage();
         if (token) load();
+        function t(key){return (translations[language]&&translations[language][key])||translations.en[key]||key;}
+        function setLanguage(next){language=next==='zh'?'zh':'en';localStorage.setItem('vibelinkAdminLanguage',language);applyLanguage();if(config) render();}
+        function applyLanguage(){
+          document.documentElement.lang=language==='zh'?'zh-CN':'en';
+          document.querySelectorAll('[data-i18n]').forEach(el=>{el.textContent=t(el.dataset.i18n);});
+          document.querySelectorAll('[data-i18n-placeholder]').forEach(el=>{el.placeholder=t(el.dataset.i18nPlaceholder);});
+          document.title=t('adminTitle');
+        }
         function headers(){return {'Authorization':'Bearer '+token,'Content-Type':'application/json'};}
         async function login(){token=document.getElementById('token').value.trim();localStorage.setItem('vibelinkAdminToken',token);await load();}
         async function load(){
@@ -225,7 +324,7 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
           const root=document.getElementById('buttons');root.innerHTML='';
           config.controlButtons.forEach((b,i)=>{
             const el=document.createElement('div');el.className='item control-item';
-            el.innerHTML='<div class="handle">☰</div><div><div class="control-label">'+escapeHtml(b.label)+'</div><div class="control-type">'+escapeHtml(b.type)+'</div></div>';
+            el.innerHTML='<div class="handle">☰</div><div><div class="control-label">'+escapeHtml(localizedControlLabel(b))+'</div><div class="control-type">'+escapeHtml(b.type)+'</div></div>';
             draggable(el,root,'controlButtons',i);root.appendChild(el);
           });
         }
@@ -233,11 +332,11 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
           const root=document.getElementById('quickTexts');root.innerHTML='';
           config.quickTexts.forEach((q,i)=>{
             const el=document.createElement('div');el.className='item quick';
-            el.innerHTML='<div class="quick-top"><div class="handle">☰</div><button class="danger" onclick="removeQuickText('+i+')">Delete</button></div><div class="quick-body"><label class="field"><span>Label</span><input value="'+attr(q.name)+'" oninput="config.quickTexts['+i+'].name=this.value"></label><label class="field"><span>Content</span><textarea oninput="config.quickTexts['+i+'].content=this.value">'+escapeHtml(q.content)+'</textarea></label></div>';
+            el.innerHTML='<div class="quick-top"><div class="handle">☰</div><button class="danger" onclick="removeQuickText('+i+')">'+escapeHtml(t('delete'))+'</button></div><div class="quick-body"><label class="field"><span>'+escapeHtml(t('label'))+'</span><input value="'+attr(q.name)+'" oninput="config.quickTexts['+i+'].name=this.value"></label><label class="field"><span>'+escapeHtml(t('content'))+'</span><textarea oninput="config.quickTexts['+i+'].content=this.value">'+escapeHtml(q.content)+'</textarea></label></div>';
             draggable(el,root,'quickTexts',i);root.appendChild(el);
           });
         }
-        function addQuickText(){config.quickTexts.push({id:'quick_'+Date.now(),name:'New Reply',group:'',content:'New content'});renderQuickTexts();}
+        function addQuickText(){config.quickTexts.push({id:'quick_'+Date.now(),name:t('newReply'),group:'',content:t('newContent')});renderQuickTexts();}
         function removeQuickText(i){config.quickTexts.splice(i,1);renderQuickTexts();}
         function renderCommands(){
           const root=document.getElementById('commands');root.innerHTML='';
@@ -245,11 +344,11 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
           config.commands.forEach((c,i)=>{
             const el=document.createElement('div');el.className='item command';
             const checked=c.requiresConfirmation?'checked':'';
-            el.innerHTML='<div class="command-top"><div class="command-top-left"><div class="handle">☰</div><div class="command-title">'+escapeHtml(c.name||'Command')+'</div></div><button class="danger" onclick="removeCommand('+i+')">Delete</button></div><div class="command-body"><label class="field"><span>Name</span><input value="'+attr(c.name)+'" oninput="config.commands['+i+'].name=this.value"></label><label class="field"><span>Working Dir</span><input value="'+attr(c.workingDirectory)+'" oninput="config.commands['+i+'].workingDirectory=this.value"></label><label class="field wide"><span>Command</span><textarea oninput="config.commands['+i+'].command=this.value">'+escapeHtml(c.command)+'</textarea></label><label class="check-row wide"><input type="checkbox" '+checked+' onchange="config.commands['+i+'].requiresConfirmation=this.checked">Require confirmation</label></div>';
+            el.innerHTML='<div class="command-top"><div class="command-top-left"><div class="handle">☰</div><div class="command-title">'+escapeHtml(c.name||t('command'))+'</div></div><button class="danger" onclick="removeCommand('+i+')">'+escapeHtml(t('delete'))+'</button></div><div class="command-body"><label class="field"><span>'+escapeHtml(t('name'))+'</span><input value="'+attr(c.name)+'" oninput="config.commands['+i+'].name=this.value"></label><label class="field"><span>'+escapeHtml(t('workingDir'))+'</span><input value="'+attr(c.workingDirectory)+'" oninput="config.commands['+i+'].workingDirectory=this.value"></label><label class="field wide"><span>'+escapeHtml(t('command'))+'</span><textarea oninput="config.commands['+i+'].command=this.value">'+escapeHtml(c.command)+'</textarea></label><label class="check-row wide"><input type="checkbox" '+checked+' onchange="config.commands['+i+'].requiresConfirmation=this.checked">'+escapeHtml(t('requireConfirmation'))+'</label></div>';
             draggable(el,root,'commands',i);root.appendChild(el);
           });
         }
-        function addCommand(){config.commands=(config.commands||[]);config.commands.push({id:'command_'+Date.now(),name:'New Command',command:'pwd',workingDirectory:'',requiresConfirmation:false});renderCommands();}
+        function addCommand(){config.commands=(config.commands||[]);config.commands.push({id:'command_'+Date.now(),name:t('newCommand'),command:'pwd',workingDirectory:'',requiresConfirmation:false});renderCommands();}
         function removeCommand(i){config.commands.splice(i,1);renderCommands();}
         function renderShortcutButtons(){
           const root=document.getElementById('shortcutButtons');root.innerHTML='';
@@ -257,15 +356,20 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
           config.shortcutButtons.forEach((s,i)=>{
             const el=document.createElement('div');el.className='item shortcut';
             const checked=s.requiresConfirmation?'checked':'';
-            el.innerHTML='<div class="shortcut-top"><div class="handle">☰</div><div class="shortcut-title">'+escapeHtml(s.name||'Shortcut')+'</div><button class="danger" onclick="removeShortcutButton('+i+')">Delete</button></div><div class="shortcut-body"><label class="field wide"><span>Name</span><input value="'+attr(s.name)+'" oninput="config.shortcutButtons['+i+'].name=this.value"></label><label class="field"><span>X</span><input type="number" value="'+attr(s.x)+'" oninput="config.shortcutButtons['+i+'].x=Number(this.value)"></label><label class="field"><span>Y</span><input type="number" value="'+attr(s.y)+'" oninput="config.shortcutButtons['+i+'].y=Number(this.value)"></label><label class="field"><span>Screen W</span><input type="number" value="'+attr(s.screenWidth)+'" oninput="config.shortcutButtons['+i+'].screenWidth=Number(this.value)"></label><label class="field"><span>Screen H</span><input type="number" value="'+attr(s.screenHeight)+'" oninput="config.shortcutButtons['+i+'].screenHeight=Number(this.value)"></label><label class="check-row wide"><input type="checkbox" '+checked+' onchange="config.shortcutButtons['+i+'].requiresConfirmation=this.checked">Require confirmation</label></div>';
+            el.innerHTML='<div class="shortcut-top"><div class="handle">☰</div><div class="shortcut-title">'+escapeHtml(s.name||t('shortcut'))+'</div><button class="danger" onclick="removeShortcutButton('+i+')">'+escapeHtml(t('delete'))+'</button></div><div class="shortcut-body"><label class="field wide"><span>'+escapeHtml(t('name'))+'</span><input value="'+attr(s.name)+'" oninput="config.shortcutButtons['+i+'].name=this.value"></label><label class="field"><span>X</span><input type="number" value="'+attr(s.x)+'" oninput="config.shortcutButtons['+i+'].x=Number(this.value)"></label><label class="field"><span>Y</span><input type="number" value="'+attr(s.y)+'" oninput="config.shortcutButtons['+i+'].y=Number(this.value)"></label><label class="field"><span>'+escapeHtml(t('screenW'))+'</span><input type="number" value="'+attr(s.screenWidth)+'" oninput="config.shortcutButtons['+i+'].screenWidth=Number(this.value)"></label><label class="field"><span>'+escapeHtml(t('screenH'))+'</span><input type="number" value="'+attr(s.screenHeight)+'" oninput="config.shortcutButtons['+i+'].screenHeight=Number(this.value)"></label><label class="check-row wide"><input type="checkbox" '+checked+' onchange="config.shortcutButtons['+i+'].requiresConfirmation=this.checked">'+escapeHtml(t('requireConfirmation'))+'</label></div>';
             draggable(el,root,'shortcutButtons',i);root.appendChild(el);
           });
         }
         function removeShortcutButton(i){config.shortcutButtons.splice(i,1);renderShortcutButtons();}
         async function save(){
           const r=await fetch('/admin/api/config',{method:'POST',headers:headers(),body:JSON.stringify(config)});
-          document.getElementById('status').textContent=r.ok?'Saved':'Save failed';
+          document.getElementById('status').textContent=r.ok?t('saved'):t('saveFailed');
           if(r.ok){config=await r.json();render();}
+        }
+        function localizedControlLabel(button){
+          if(language!=='zh') return button.label;
+          const labels={sendText:'发送文本',backspace:'退格',keyboard:'键盘',voice:'键盘',selectAll:'全选',enter:'回车',cmdEnter:'命令回车',copy:'复制',paste:'粘贴',escape:'退出',interrupt:'中断',undo:'撤销',close:'关闭'};
+          return labels[button.type]||button.label;
         }
         function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
         function attr(s){return escapeHtml(s).replace(/"/g,'&quot;');}

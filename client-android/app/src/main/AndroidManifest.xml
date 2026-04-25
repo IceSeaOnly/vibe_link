@@ -5,7 +5,9 @@
 
     <application
         android:allowBackup="true"
-        android:label="VibeLink"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true">
@@ -21,7 +23,7 @@
         <service
             android:name=".AdbKeyboardService"
             android:exported="true"
-            android:label="VibeLink ADB Keyboard"
+            android:label="@string/adb_keyboard_name"
             android:permission="android.permission.BIND_INPUT_METHOD">
             <intent-filter>
                 <action android:name="android.view.InputMethod" />

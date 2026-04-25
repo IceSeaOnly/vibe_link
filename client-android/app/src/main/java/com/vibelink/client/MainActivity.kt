@@ -53,6 +53,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
     private lateinit var tokenInput: EditText
     private lateinit var configContainer: LinearLayout
     private lateinit var configEditButton: Button
+    private lateinit var languageButton: Button
     private lateinit var mainConnectionButton: Button
     private lateinit var rootScroll: ScrollView
     private lateinit var statusText: TextView
@@ -60,15 +61,23 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
     private lateinit var screenView: RemoteScreenView
     private lateinit var modeButton: ImageButton
     private lateinit var displayContainer: LinearLayout
+    private lateinit var displayLabel: TextView
+    private lateinit var brandText: TextView
     private lateinit var displaySpinner: Spinner
     private lateinit var textInput: EditText
     private lateinit var keyboardInput: EditText
     private lateinit var submitCheck: CheckBox
+    private lateinit var scrollUpButton: Button
+    private lateinit var scrollDownButton: Button
     private lateinit var controlsLayout: LinearLayout
+    private lateinit var quickTextsTitle: TextView
     private lateinit var quickTextsLayout: LinearLayout
+    private lateinit var commandsTitle: TextView
     private lateinit var commandsLayout: LinearLayout
+    private lateinit var shortcutsTitle: TextView
     private lateinit var shortcutsLayout: LinearLayout
     private lateinit var outputText: TextView
+    private lateinit var copyrightText: TextView
     private var apiClient: ApiClient? = null
     private var streamInput: InputStream? = null
     private var streamGeneration = 0
@@ -83,6 +92,11 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
     private var clientConfigGeneration = 0
     private var keyboardActive = false
     private var keyboardInputInternalChange = false
+    private var appLanguage = AppLanguage.EN
+    private var lastControlButtons: List<ControlButton> = emptyList()
+    private var lastQuickTexts: List<QuickText> = emptyList()
+    private var lastCommands: List<QuickCommand> = emptyList()
+    private var lastShortcuts: List<ShortcutButton> = emptyList()
     private val keyboardSentinel = "\u200B"
 
     private val healthRunnable = object : Runnable {
@@ -101,7 +115,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
                         mainHandler.post {
                             healthFailures += 1
                             if (healthFailures >= 2) {
-                                setDisconnected("Disconnected: health check failed")
+                                setDisconnected(t(AppText.Key.HEALTH_DISCONNECTED))
                             }
                         }
                     }
@@ -138,9 +152,11 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences("vibelink", MODE_PRIVATE)
+        appLanguage = AppLanguage.fromCode(prefs.getString("language", "en"))
         isConfigExpanded = prefs.getString("serverUrl", "").isNullOrBlank() ||
             prefs.getString("token", "").isNullOrBlank()
         buildUi()
+        updateStaticText()
         updateConnectionUi()
         updateConfigVisibility()
         updateModeButton()
@@ -148,7 +164,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
 
     override fun onDestroy() {
         super.onDestroy()
-        setDisconnected("Disconnected")
+        setDisconnected(t(AppText.Key.DISCONNECTED))
         executor.shutdownNow()
     }
 
@@ -170,7 +186,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         )
         frameText = TextView(this).apply {
-            text = "Frame: -"
+            text = "${t(AppText.Key.FRAME)}: -"
             textSize = 11f
             setTextColor(0xFF9CA3AF.toInt())
             setShadowLayer(2f, 0f, 1f, 0x99000000.toInt())
@@ -188,7 +204,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
             setColorFilter(0xFF2563EB.toInt())
             scaleType = ImageView.ScaleType.CENTER
             elevation = dp(4).toFloat()
-            contentDescription = "Switch interaction mode"
+            contentDescription = t(AppText.Key.SWITCH_INTERACTION_MODE)
             setOnClickListener { toggleInteractionMode() }
         }
         screenContainer.addView(
@@ -211,21 +227,26 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         val headerRow = row().apply {
             setPadding(0, 0, 0, dp(8))
         }
-        headerRow.addView(TextView(this).apply {
-            text = "VibeLink"
+        brandText = TextView(this).apply {
+            text = t(AppText.Key.BRAND)
             textSize = 18f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(0xFF111827.toInt())
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             gravity = Gravity.CENTER_VERTICAL
-        }, LinearLayout.LayoutParams(0, dp(34), 1f))
-        mainConnectionButton = button("Connect", ButtonStyle.PRIMARY) { onMainConnectionClick() }
+        }
+        headerRow.addView(brandText, LinearLayout.LayoutParams(0, dp(34), 1f))
+        languageButton = button(appLanguage.switchLabel(), ButtonStyle.GHOST) { toggleLanguage() }
+        headerRow.addView(languageButton, LinearLayout.LayoutParams(dp(52), dp(34)).apply {
+            leftMargin = dp(6)
+        })
+        mainConnectionButton = button(t(AppText.Key.CONNECT), ButtonStyle.PRIMARY) { onMainConnectionClick() }
         headerRow.addView(mainConnectionButton, LinearLayout.LayoutParams(dp(98), dp(34)).apply {
             leftMargin = dp(6)
         })
         statusText = TextView(this).apply {
-            text = "Not connected"
+            text = t(AppText.Key.NOT_CONNECTED)
             textSize = 11f
             setTextColor(0xFF64748B.toInt())
             maxLines = 1
@@ -233,7 +254,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
             gravity = Gravity.CENTER_VERTICAL
             visibility = View.GONE
         }
-        configEditButton = button("Auth", ButtonStyle.GHOST) {
+        configEditButton = button(t(AppText.Key.AUTH), ButtonStyle.GHOST) {
             isConfigExpanded = !isConfigExpanded
             updateConfigVisibility()
         }
@@ -253,7 +274,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
             setPadding(dp(12), 0, dp(12), 0)
         }
         tokenInput = EditText(this).apply {
-            hint = "token"
+            hint = t(AppText.Key.TOKEN)
             setSingleLine()
             setText(prefs.getString("token", ""))
             background = roundedDrawable(0xFFFFFFFF.toInt(), dp(10), 0xFFE2E8F0.toInt(), 1)
@@ -268,13 +289,14 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
             visibility = View.GONE
         }
         val displayHeaderRow = row()
-        displayHeaderRow.addView(TextView(this).apply {
-            text = "Display"
+        displayLabel = TextView(this).apply {
+            text = t(AppText.Key.DISPLAY)
             textSize = 16f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(0xFF111827.toInt())
             gravity = Gravity.CENTER_VERTICAL
-        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(34)))
+        }
+        displayHeaderRow.addView(displayLabel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(34)))
         displaySpinner = Spinner(this).apply {
             setPadding(0, 0, 0, 0)
         }
@@ -285,12 +307,14 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         content.addView(displayContainer, matchWrap())
 
         val scrollRow = row()
-        scrollRow.addView(button("Scroll Up") { sendScroll(0, -360) }, weightWrap(isFirst = true))
-        scrollRow.addView(button("Scroll Down") { sendScroll(0, 360) }, weightWrap(isLast = true))
+        scrollUpButton = button(t(AppText.Key.SCROLL_UP)) { sendScroll(0, -360) }
+        scrollDownButton = button(t(AppText.Key.SCROLL_DOWN)) { sendScroll(0, 360) }
+        scrollRow.addView(scrollUpButton, weightWrap(isFirst = true))
+        scrollRow.addView(scrollDownButton, weightWrap(isLast = true))
         content.addView(scrollRow, rowWrap())
 
         textInput = EditText(this).apply {
-            hint = "Text to send"
+            hint = t(AppText.Key.TEXT_TO_SEND)
             minLines = 2
             maxLines = 5
             gravity = Gravity.TOP
@@ -310,7 +334,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         }
         content.addView(textInput, matchWrap())
 
-        submitCheck = CheckBox(this).apply { text = "Submit with Enter" }
+        submitCheck = CheckBox(this).apply { text = t(AppText.Key.SUBMIT_WITH_ENTER) }
         content.addView(submitCheck)
 
         keyboardInput = createKeyboardInput()
@@ -320,25 +344,39 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         content.addView(controlsLayout, matchWrap())
         renderControlButtons(defaultControlButtons())
 
-        content.addView(section("Quick Texts"))
+        quickTextsTitle = section(t(AppText.Key.QUICK_TEXTS))
+        content.addView(quickTextsTitle)
         quickTextsLayout = horizontalItems()
         content.addView(wrapHorizontal(quickTextsLayout))
 
-        content.addView(section("Commands"))
+        commandsTitle = section(t(AppText.Key.COMMANDS))
+        content.addView(commandsTitle)
         commandsLayout = verticalItems()
         content.addView(commandsLayout)
 
         outputText = TextView(this).apply {
-            text = "Command output"
+            text = t(AppText.Key.COMMAND_OUTPUT)
             setTextColor(0xFF1F2937.toInt())
             background = roundedDrawable(0xFFEFF6FF.toInt(), dp(10), 0xFFBFDBFE.toInt(), 1)
             setPadding(dp(10), dp(10), dp(10), dp(10))
         }
         content.addView(outputText, matchWrap())
 
-        content.addView(section("Shortcut Buttons"))
+        shortcutsTitle = section(t(AppText.Key.SHORTCUT_BUTTONS))
+        content.addView(shortcutsTitle)
         shortcutsLayout = horizontalItems()
         content.addView(wrapHorizontal(shortcutsLayout))
+
+        copyrightText = TextView(this).apply {
+            text = t(AppText.Key.COPYRIGHT)
+            textSize = 10f
+            setTextColor(0xFF94A3B8.toInt())
+            gravity = Gravity.CENTER
+            maxLines = 2
+        }
+        content.addView(copyrightText, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(18)
+        })
 
         setContentView(root)
     }
@@ -347,7 +385,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         when (connectionState) {
             ConnectionState.DISCONNECTED -> connect()
             ConnectionState.CONNECTING -> Unit
-            ConnectionState.CONNECTED -> setDisconnected("Disconnected")
+            ConnectionState.CONNECTED -> setDisconnected(t(AppText.Key.DISCONNECTED))
         }
     }
 
@@ -355,12 +393,12 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         val serverUrl = serverInput.text.toString().trim()
         val token = tokenInput.text.toString().trim()
         if (serverUrl.isBlank() || token.isBlank()) {
-            showError("Enter server address and token")
+            showError(t(AppText.Key.ENTER_SERVER_AND_TOKEN))
             isConfigExpanded = true
             updateConfigVisibility()
             return
         }
-        setConnectionState(ConnectionState.CONNECTING, "Connecting...")
+        setConnectionState(ConnectionState.CONNECTING, t(AppText.Key.CONNECTING_STATUS))
         executor.execute {
             try {
                 val client = ApiClient(serverUrl, token)
@@ -381,7 +419,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
                     isConfigExpanded = false
                     setConnectionState(
                         ConnectionState.CONNECTED,
-                        "Connected: ${health.name} ${health.version} ${health.screenWidth}x${health.screenHeight}"
+                        "${t(AppText.Key.CONNECTED)}: ${health.name} ${health.version} ${health.screenWidth}x${health.screenHeight}"
                     )
                     updateConfigVisibility()
                     renderDisplays(displays)
@@ -391,7 +429,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
                 loadQuickActions(client)
             } catch (error: Exception) {
                 mainHandler.post {
-                    setDisconnected("Connect failed: ${error.shortMessage()}", showToast = true)
+                    setDisconnected("${t(AppText.Key.CONNECT_FAILED)}: ${error.shortMessage()}", showToast = true)
                 }
             }
         }
@@ -411,7 +449,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         mainHandler.post {
             connectionState = ConnectionState.DISCONNECTED
             statusText.text = reason
-            frameText.text = "Frame: -"
+            frameText.text = "${t(AppText.Key.FRAME)}: -"
             displayContainer.visibility = View.GONE
             updateConnectionUi()
             if (showToast) Toast.makeText(this, reason, Toast.LENGTH_SHORT).show()
@@ -427,9 +465,9 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
     private fun updateConnectionUi() {
         if (!::mainConnectionButton.isInitialized) return
         mainConnectionButton.text = when (connectionState) {
-            ConnectionState.DISCONNECTED -> "Connect"
-            ConnectionState.CONNECTING -> "Connecting..."
-            ConnectionState.CONNECTED -> "Disconnect"
+            ConnectionState.DISCONNECTED -> t(AppText.Key.CONNECT)
+            ConnectionState.CONNECTING -> t(AppText.Key.CONNECTING)
+            ConnectionState.CONNECTED -> t(AppText.Key.DISCONNECT)
         }
         mainConnectionButton.isEnabled = connectionState != ConnectionState.CONNECTING
         configEditButton.isEnabled = connectionState != ConnectionState.CONNECTING
@@ -444,7 +482,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
     private fun updateConfigVisibility() {
         if (!::configContainer.isInitialized) return
         configContainer.visibility = if (isConfigExpanded) View.VISIBLE else View.GONE
-        configEditButton.text = "Auth"
+        configEditButton.text = t(AppText.Key.AUTH)
     }
 
     private fun startHealthChecks() {
@@ -464,7 +502,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         displayContainer.visibility = View.VISIBLE
         displaySpinner.onItemSelectedListener = null
         if (displays.isEmpty()) {
-            displaySpinner.adapter = compactDisplayAdapter(listOf("Default stream"))
+            displaySpinner.adapter = compactDisplayAdapter(listOf(t(AppText.Key.DEFAULT_STREAM)))
             displaySpinner.isEnabled = false
             return
         }
@@ -503,11 +541,11 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
                     mainHandler.post { updateFrame(frame) }
                 }
                 if (generation == streamGeneration) {
-                    mainHandler.post { setDisconnected("Disconnected: stream ended") }
+                    mainHandler.post { setDisconnected(t(AppText.Key.STREAM_ENDED)) }
                 }
             } catch (error: Exception) {
                 if (generation == streamGeneration) {
-                    mainHandler.post { setDisconnected("Disconnected: stream error ${error.shortMessage()}") }
+                    mainHandler.post { setDisconnected("${t(AppText.Key.STREAM_ERROR)} ${error.shortMessage()}") }
                 }
             }
         }
@@ -517,7 +555,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         lastScreenWidth = frame.width
         lastScreenHeight = frame.height
         screenView.setFrame(frame)
-        frameText.text = "Frame: ${frame.width}x${frame.height} ${System.currentTimeMillis()}"
+        frameText.text = "${t(AppText.Key.FRAME)}: ${frame.width}x${frame.height} ${System.currentTimeMillis()}"
     }
 
     private fun compactDisplayAdapter(labels: List<String>): ArrayAdapter<String> {
@@ -556,18 +594,19 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
                     startClientConfigPolling()
                 }
             } catch (error: Exception) {
-                mainHandler.post { showError("Actions load failed: ${error.shortMessage()}") }
+                mainHandler.post { showError("${t(AppText.Key.ACTIONS_LOAD_FAILED)}: ${error.shortMessage()}") }
             }
         }
     }
 
     private fun renderControlButtons(items: List<ControlButton>) {
+        lastControlButtons = items
         val buttons = items.ifEmpty { defaultControlButtons() }
         controlsLayout.removeAllViews()
         buttons.chunked(4).forEach { rowItems ->
             val controlsRow = row()
             rowItems.forEachIndexed { index, item ->
-                controlsRow.addView(button(item.label) { runControlButton(item.type) }, weightWrap(isFirst = index == 0, isLast = index == rowItems.lastIndex))
+                controlsRow.addView(button(AppText.controlLabel(item.type, item.label, appLanguage)) { runControlButton(item.type) }, weightWrap(isFirst = index == 0, isLast = index == rowItems.lastIndex))
             }
             if (rowItems.size < 4) {
                 repeat(4 - rowItems.size) {
@@ -579,20 +618,22 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
     }
 
     private fun renderQuickTexts(items: List<QuickText>) {
+        lastQuickTexts = items
         quickTextsLayout.removeAllViews()
         items.forEach { item ->
-            quickTextsLayout.addView(button(item.name) {
+            quickTextsLayout.addView(button(AppText.quickTextName(item.id, item.name, appLanguage)) {
                 sendControl(JSONObject().put("type", "text").put("text", item.content).put("submit", submitCheck.isChecked))
             }, horizontalItemWrap())
         }
     }
 
     private fun renderCommands(items: List<QuickCommand>) {
+        lastCommands = items
         commandsLayout.removeAllViews()
         items.chunked(4).forEach { rowItems ->
             val commandsRow = row()
             rowItems.forEachIndexed { index, item ->
-                commandsRow.addView(button(item.name) { runCommand(item.id) }, weightWrap(isFirst = index == 0, isLast = index == rowItems.lastIndex))
+                commandsRow.addView(button(AppText.commandName(item.id, item.name, appLanguage)) { runCommand(item.id) }, weightWrap(isFirst = index == 0, isLast = index == rowItems.lastIndex))
             }
             if (rowItems.size < 4) {
                 repeat(4 - rowItems.size) {
@@ -604,17 +645,18 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
     }
 
     private fun renderShortcuts(items: List<ShortcutButton>) {
+        lastShortcuts = items
         shortcutsLayout.removeAllViews()
         items.forEach { item ->
-            shortcutsLayout.addView(button(item.name) { runShortcut(item.id) }, horizontalItemWrap())
+            shortcutsLayout.addView(button(AppText.shortcutName(item.id, item.name, appLanguage)) { runShortcut(item.id) }, horizontalItemWrap())
         }
-        shortcutsLayout.addView(button("Add Shortcut", ButtonStyle.GHOST) { startShortcutCapture() }, horizontalItemWrap())
+        shortcutsLayout.addView(button(t(AppText.Key.ADD_SHORTCUT), ButtonStyle.GHOST) { startShortcutCapture() }, horizontalItemWrap())
     }
 
     private fun sendText() {
         val text = textInput.text.toString()
         if (text.isBlank()) {
-            showError("Text is empty")
+            showError(t(AppText.Key.TEXT_EMPTY))
             return
         }
         textInput.text.clear()
@@ -641,15 +683,15 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
     private fun defaultControlButtons(): List<ControlButton> = ControlButtonDefaults.defaultButtons()
 
     private fun runCommand(id: String) {
-        val client = apiClient ?: return showError("Not connected")
-        outputText.text = "Starting command..."
+        val client = apiClient ?: return showError(t(AppText.Key.NOT_CONNECTED_ERROR))
+        outputText.text = t(AppText.Key.STARTING_COMMAND)
         executor.execute {
             try {
                 val runId = client.runCommand(id)
                 if (runId.isBlank()) throw IllegalStateException("missing runId")
                 pollCommand(client, runId)
             } catch (error: Exception) {
-                mainHandler.post { showError("Command failed: ${error.shortMessage()}") }
+                mainHandler.post { showError("${t(AppText.Key.COMMAND_FAILED)}: ${error.shortMessage()}") }
             }
         }
     }
@@ -658,7 +700,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         repeat(60) {
             val run = client.getCommandRun(runId)
             mainHandler.post {
-                outputText.text = "Status: ${run.status} Exit: ${run.exitCode ?: "-"}\n${run.output}"
+                outputText.text = "${t(AppText.Key.COMMAND_STATUS)}: ${run.status} ${t(AppText.Key.EXIT)}: ${run.exitCode ?: "-"}\n${run.output}"
             }
             if (run.status != "queued" && run.status != "running") return
             Thread.sleep(1000)
@@ -666,27 +708,27 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
     }
 
     private fun runShortcut(id: String) {
-        val client = apiClient ?: return showError("Not connected")
+        val client = apiClient ?: return showError(t(AppText.Key.NOT_CONNECTED_ERROR))
         executor.execute {
             try {
                 client.runShortcutButton(id)
-                mainHandler.post { showStatus("Shortcut sent") }
+                mainHandler.post { showStatus(t(AppText.Key.SHORTCUT_SENT)) }
             } catch (error: Exception) {
-                mainHandler.post { showError("Shortcut failed: ${error.shortMessage()}") }
+                mainHandler.post { showError("${t(AppText.Key.SHORTCUT_FAILED)}: ${error.shortMessage()}") }
             }
         }
     }
 
     private fun startShortcutCapture() {
         if (connectionState != ConnectionState.CONNECTED) {
-            showError("Connect before adding shortcut")
+            showError(t(AppText.Key.CONNECT_BEFORE_SHORTCUT))
             return
         }
         if (!screenView.startShortcutCapture()) {
-            showError("No screen frame yet")
+            showError(t(AppText.Key.NO_SCREEN_FRAME))
             return
         }
-        showStatus("Drag the blue pointer to the target, then release")
+        showStatus(t(AppText.Key.DRAG_POINTER))
     }
 
     override fun onTap(x: Int, y: Int, imageWidth: Int, imageHeight: Int) {
@@ -752,19 +794,19 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
 
     override fun onShortcutPointSelected(x: Int, y: Int, imageWidth: Int, imageHeight: Int) {
         val input = EditText(this).apply {
-            hint = "Shortcut name"
+            hint = t(AppText.Key.SHORTCUT_NAME)
             setSingleLine()
-            setText("Shortcut")
+            setText(t(AppText.Key.SHORTCUT))
             selectAll()
         }
         AlertDialog.Builder(this)
-            .setTitle("Name shortcut")
+            .setTitle(t(AppText.Key.NAME_SHORTCUT))
             .setView(input)
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Save") { _, _ ->
+            .setNegativeButton(t(AppText.Key.CANCEL), null)
+            .setPositiveButton(t(AppText.Key.SAVE)) { _, _ ->
                 val name = input.text.toString().trim()
                 if (name.isBlank()) {
-                    showError("Shortcut name is empty")
+                    showError(t(AppText.Key.SHORTCUT_NAME_EMPTY))
                 } else {
                     saveShortcutPoint(name, x, y, imageWidth, imageHeight)
                 }
@@ -773,7 +815,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
     }
 
     private fun saveShortcutPoint(name: String, x: Int, y: Int, imageWidth: Int, imageHeight: Int) {
-        val client = apiClient ?: return showError("Not connected")
+        val client = apiClient ?: return showError(t(AppText.Key.NOT_CONNECTED_ERROR))
         val button = ShortcutButton(
             id = "shortcut_${System.currentTimeMillis()}",
             name = name,
@@ -788,10 +830,10 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
                 val shortcuts = client.saveShortcutButton(button)
                 mainHandler.post {
                     renderShortcuts(shortcuts)
-                    showStatus("Shortcut saved")
+                    showStatus(t(AppText.Key.SHORTCUT_SAVED))
                 }
             } catch (error: Exception) {
-                mainHandler.post { showError("Shortcut save failed: ${error.shortMessage()}") }
+                mainHandler.post { showError("${t(AppText.Key.SHORTCUT_SAVE_FAILED)}: ${error.shortMessage()}") }
             }
         }
     }
@@ -801,16 +843,16 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
     }
 
     private fun sendControl(payload: JSONObject, showSentStatus: Boolean = true) {
-        val client = apiClient ?: return showError("Not connected")
+        val client = apiClient ?: return showError(t(AppText.Key.NOT_CONNECTED_ERROR))
         val decorated = payload.withDisplayContext()
         executor.execute {
             try {
                 client.sendControl(decorated)
                 if (showSentStatus) {
-                    mainHandler.post { showStatus("Sent ${decorated.optString("type")}") }
+                    mainHandler.post { showStatus("${t(AppText.Key.SENT)} ${decorated.optString("type")}") }
                 }
             } catch (error: Exception) {
-                mainHandler.post { showError("Send failed: ${error.shortMessage()}") }
+                mainHandler.post { showError("${t(AppText.Key.SEND_FAILED)}: ${error.shortMessage()}") }
             }
         }
     }
@@ -839,15 +881,15 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         when (screenView.interactionMode) {
             InteractionMode.SCREEN -> {
                 modeButton.setImageResource(R.drawable.ic_mode_view)
-                modeButton.contentDescription = "Screen view mode"
+                modeButton.contentDescription = t(AppText.Key.SCREEN_VIEW_MODE)
             }
             InteractionMode.POINTER -> {
                 modeButton.setImageResource(R.drawable.ic_mode_pointer)
-                modeButton.contentDescription = "Pointer click mode"
+                modeButton.contentDescription = t(AppText.Key.POINTER_CLICK_MODE)
             }
             InteractionMode.TRACKPAD -> {
                 modeButton.setImageResource(R.drawable.ic_mode_trackpad)
-                modeButton.contentDescription = "Trackpad mode"
+                modeButton.contentDescription = t(AppText.Key.TRACKPAD_MODE)
             }
         }
     }
@@ -933,7 +975,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         mainHandler.postDelayed({
             rootScroll.scrollTo(0, controlsLayout.top)
         }, 600L)
-        showStatus("Keyboard open")
+        showStatus(t(AppText.Key.KEYBOARD_OPEN))
     }
 
     private fun closeKeyboardInput() {
@@ -942,7 +984,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
         imm.hideSoftInputFromWindow(keyboardInput.windowToken, 0)
         keyboardInput.clearFocus()
-        showStatus("Keyboard closed")
+        showStatus(t(AppText.Key.KEYBOARD_CLOSED))
     }
 
     private fun handleKeyboardInputChanged(editable: Editable) {
@@ -978,6 +1020,54 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         keyboardInput.setSelection(keyboardInput.text.length)
         keyboardInputInternalChange = false
     }
+
+    private fun toggleLanguage() {
+        appLanguage = appLanguage.toggle()
+        prefs.edit().putString("language", appLanguage.code()).apply()
+        updateStaticText()
+        renderControlButtons(lastControlButtons.ifEmpty { defaultControlButtons() })
+        renderQuickTexts(lastQuickTexts)
+        renderCommands(lastCommands)
+        renderShortcuts(lastShortcuts)
+        if (displayContainer.visibility == View.VISIBLE) renderDisplays(remoteDisplays)
+        updateConnectionUi()
+        updateModeButton()
+    }
+
+    private fun updateStaticText() {
+        if (::languageButton.isInitialized) languageButton.text = appLanguage.switchLabel()
+        if (::brandText.isInitialized) {
+            brandText.text = t(AppText.Key.BRAND)
+            title = t(AppText.Key.BRAND)
+        }
+        if (::configEditButton.isInitialized) configEditButton.text = t(AppText.Key.AUTH)
+        if (::displayLabel.isInitialized) displayLabel.text = t(AppText.Key.DISPLAY)
+        if (::scrollUpButton.isInitialized) scrollUpButton.text = t(AppText.Key.SCROLL_UP)
+        if (::scrollDownButton.isInitialized) scrollDownButton.text = t(AppText.Key.SCROLL_DOWN)
+        if (::textInput.isInitialized) textInput.hint = t(AppText.Key.TEXT_TO_SEND)
+        if (::tokenInput.isInitialized) tokenInput.hint = t(AppText.Key.TOKEN)
+        if (::submitCheck.isInitialized) submitCheck.text = t(AppText.Key.SUBMIT_WITH_ENTER)
+        if (::quickTextsTitle.isInitialized) quickTextsTitle.text = t(AppText.Key.QUICK_TEXTS)
+        if (::commandsTitle.isInitialized) commandsTitle.text = t(AppText.Key.COMMANDS)
+        if (::shortcutsTitle.isInitialized) shortcutsTitle.text = t(AppText.Key.SHORTCUT_BUTTONS)
+        if (::copyrightText.isInitialized) copyrightText.text = t(AppText.Key.COPYRIGHT)
+        if (::outputText.isInitialized && outputText.text.toString() == AppText.text(AppText.Key.COMMAND_OUTPUT, appLanguage.toggle())) {
+            outputText.text = t(AppText.Key.COMMAND_OUTPUT)
+        }
+        if (::frameText.isInitialized) {
+            frameText.text = if (lastScreenWidth > 0 && lastScreenHeight > 0) {
+                "${t(AppText.Key.FRAME)}: ${lastScreenWidth}x${lastScreenHeight} ${System.currentTimeMillis()}"
+            } else {
+                "${t(AppText.Key.FRAME)}: -"
+            }
+        }
+        if (::screenView.isInitialized) screenView.noFrameText = t(AppText.Key.NO_FRAME)
+        if (::statusText.isInitialized && connectionState == ConnectionState.DISCONNECTED) {
+            statusText.text = t(AppText.Key.NOT_CONNECTED)
+        }
+    }
+
+    private fun t(key: AppText.Key): String = AppText.text(key, appLanguage)
 
     private fun showStatus(message: String) {
         statusText.text = message

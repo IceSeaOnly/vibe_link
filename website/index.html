@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="VibeLink is a phone-first remote development controller for macOS and Android.">
+  <title>VibeLink | Phone-first remote development controller</title>
+  <link rel="icon" href="assets/vibelink-logo.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header" aria-label="Primary navigation">
+    <a class="brand" href="#top" aria-label="VibeLink home">
+      <img src="assets/vibelink-logo.png" alt="" width="36" height="36">
+      <span data-i18n="brand">VibeLink</span>
+    </a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#why" data-i18n="navWhy">Why VibeLink</a>
+      <a href="#compare" data-i18n="navCompare">Compare</a>
+      <a href="#workflow" data-i18n="navWorkflow">Workflow</a>
+      <a href="#audience" data-i18n="navAudience">Users</a>
+    </nav>
+    <div class="header-actions">
+      <button class="language-toggle" type="button" id="languageToggle" aria-label="Switch language">中文</button>
+      <a class="github-link" href="https://github.com/IceSeaOnly/vibe_link" target="_blank" rel="noreferrer" data-i18n="github">GitHub</a>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-bg" aria-hidden="true"></div>
+      <div class="hero-content">
+        <p class="eyebrow" data-i18n="eyebrow">Mac remote development, built for your phone</p>
+        <h1 id="hero-title" data-i18n="heroTitle">Control your AI coding session without returning to the desk.</h1>
+        <p class="hero-copy" data-i18n="heroCopy">VibeLink turns an Android phone into a focused remote development console for your Mac: live screen, precise pointer control, quick prompts, command presets, and shortcut clicks.</p>
+        <div class="hero-actions">
+          <a class="primary-action" href="https://github.com/IceSeaOnly/vibe_link" target="_blank" rel="noreferrer" data-i18n="primaryCta">View on GitHub</a>
+          <a class="secondary-action" href="#compare" data-i18n="secondaryCta">See comparison</a>
+        </div>
+        <dl class="hero-proof" aria-label="Project highlights">
+          <div>
+            <dt data-i18n="proofOneValue">LAN-first</dt>
+            <dd data-i18n="proofOneLabel">shared-token MVP</dd>
+          </div>
+          <div>
+            <dt>macOS + Android</dt>
+            <dd data-i18n="proofTwoLabel">Swift server, native client</dd>
+          </div>
+          <div>
+            <dt data-i18n="proofThreeValue">Bilingual</dt>
+            <dd data-i18n="proofThreeLabel">English and Chinese UI</dd>
+          </div>
+        </dl>
+      </div>
+      <figure class="hero-device" aria-label="VibeLink mobile app preview">
+        <img id="heroAppImage" src="assets/en/app.png" alt="VibeLink Android app screenshot">
+      </figure>
+    </section>
+
+    <section class="section intro-band" id="why">
+      <div class="section-heading">
+        <p class="eyebrow" data-i18n="whyEyebrow">Purpose-built middle ground</p>
+        <h2 data-i18n="whyTitle">Not just SSH. Not just remote desktop.</h2>
+        <p data-i18n="whyCopy">Modern AI-assisted development often needs short, high-leverage interventions: check the screen, paste a better prompt, click a confirmation, run tests, and let the agent continue. VibeLink is designed around that loop.</p>
+      </div>
+      <div class="feature-grid" aria-label="VibeLink core features">
+        <article class="feature-item">
+          <span class="icon" aria-hidden="true">⌁</span>
+          <h3 data-i18n="featureScreenTitle">Live Mac screen</h3>
+          <p data-i18n="featureScreenCopy">MJPEG screen streaming with display selection, zooming, panning, and mobile interaction modes.</p>
+        </article>
+        <article class="feature-item">
+          <span class="icon" aria-hidden="true">⌘</span>
+          <h3 data-i18n="featureInputTitle">Developer input</h3>
+          <p data-i18n="featureInputCopy">Send text, paste prompts, trigger keyboard actions, scroll, drag, right click, and use a phone keyboard bridge.</p>
+        </article>
+        <article class="feature-item">
+          <span class="icon" aria-hidden="true">▣</span>
+          <h3 data-i18n="featurePresetsTitle">Reusable actions</h3>
+          <p data-i18n="featurePresetsCopy">Manage quick replies, preset commands, control buttons, and saved shortcut click points from the admin console.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section product-showcase" aria-labelledby="showcase-title">
+      <div class="showcase-copy">
+        <p class="eyebrow" data-i18n="showcaseEyebrow">Phone-native control surface</p>
+        <h2 id="showcase-title" data-i18n="showcaseTitle">Built around the operations developers repeat from a phone.</h2>
+        <p data-i18n="showcaseCopy">The client keeps the screen visible while surfacing the actions that matter: quick text, command execution, shortcut points, display switching, scroll controls, and precise pointer modes.</p>
+      </div>
+      <div class="screenshot-rail" aria-label="Product screenshots">
+        <figure>
+          <img id="shotControls" src="assets/en/control-buttons.png" alt="Control buttons screen">
+          <figcaption data-i18n="shotControls">Control buttons</figcaption>
+        </figure>
+        <figure>
+          <img id="shotQuick" src="assets/en/quick-replies.png" alt="Quick replies screen">
+          <figcaption data-i18n="shotQuick">Quick replies</figcaption>
+        </figure>
+        <figure>
+          <img id="shotCommands" src="assets/en/commands.png" alt="Commands screen">
+          <figcaption data-i18n="shotCommands">Commands</figcaption>
+        </figure>
+        <figure>
+          <img id="shotShortcuts" src="assets/en/shortcuts.png" alt="Shortcuts screen">
+          <figcaption data-i18n="shotShortcuts">Shortcuts</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section comparison" id="compare" aria-labelledby="compare-title">
+      <div class="section-heading">
+        <p class="eyebrow" data-i18n="compareEyebrow">Category comparison</p>
+        <h2 id="compare-title" data-i18n="compareTitle">How VibeLink differs from familiar remote development tools.</h2>
+      </div>
+      <div class="comparison-table" role="table" aria-label="Remote development comparison">
+        <div class="table-row table-head" role="row">
+          <div role="columnheader" data-i18n="colCategory">Tool category</div>
+          <div role="columnheader" data-i18n="colGoodAt">Best at</div>
+          <div role="columnheader" data-i18n="colGap">Mobile gap</div>
+          <div role="columnheader" data-i18n="colVibeLink">VibeLink advantage</div>
+        </div>
+        <div class="table-row" role="row">
+          <div role="cell" data-i18n="rowSshCategory">SSH and terminal-first access</div>
+          <div role="cell" data-i18n="rowSshGood">Fast command-line access</div>
+          <div role="cell" data-i18n="rowSshGap">No direct GUI state, browser preview, or permission dialog visibility</div>
+          <div role="cell" data-i18n="rowSshVibe">Adds live screen, GUI control, quick prompts, and command presets</div>
+        </div>
+        <div class="table-row" role="row">
+          <div role="cell" data-i18n="rowIdeCategory">Remote IDE workflows</div>
+          <div role="cell" data-i18n="rowIdeGood">Editing files in remote environments</div>
+          <div role="cell" data-i18n="rowIdeGap">Centered on code and terminals, not the current Mac desktop session</div>
+          <div role="cell" data-i18n="rowIdeVibe">Controls existing local apps, browser previews, terminals, and AI tool UIs</div>
+        </div>
+        <div class="table-row" role="row">
+          <div role="cell" data-i18n="rowCloudCategory">Cloud development environments</div>
+          <div role="cell" data-i18n="rowCloudGood">Reproducible cloud workspaces</div>
+          <div role="cell" data-i18n="rowCloudGap">Moves work away from the user's Mac-only tools</div>
+          <div role="cell" data-i18n="rowCloudVibe">Keeps the local Mac workflow and exposes it to the phone</div>
+        </div>
+        <div class="table-row" role="row">
+          <div role="cell" data-i18n="rowDesktopCategory">Traditional remote desktop</div>
+          <div role="cell" data-i18n="rowDesktopGood">General-purpose full desktop access</div>
+          <div role="cell" data-i18n="rowDesktopGap">Phone use often mirrors a tiny desktop mouse model</div>
+          <div role="cell" data-i18n="rowDesktopVibe">Treats the phone as a developer remote with focused actions</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section workflow" id="workflow">
+      <div class="workflow-text">
+        <p class="eyebrow" data-i18n="workflowEyebrow">The loop</p>
+        <h2 data-i18n="workflowTitle">Observe. Intervene. Continue.</h2>
+        <p data-i18n="workflowCopy">VibeLink supports the rhythm of AI-assisted development: keep an eye on progress, give a targeted instruction, run a trusted preset, click through a blocked prompt, and return to whatever you were doing.</p>
+      </div>
+      <ol class="workflow-steps">
+        <li><span>01</span><strong data-i18n="stepOneTitle">Watch the Mac</strong><p data-i18n="stepOneCopy">Stream the active display and inspect IDEs, browsers, terminals, or dialogs.</p></li>
+        <li><span>02</span><strong data-i18n="stepTwoTitle">Send the right input</strong><p data-i18n="stepTwoCopy">Paste a prompt, trigger a shortcut, or control the pointer with phone-friendly modes.</p></li>
+        <li><span>03</span><strong data-i18n="stepThreeTitle">Run known commands</strong><p data-i18n="stepThreeCopy">Execute configured commands and read status without exposing arbitrary shell input.</p></li>
+        <li><span>04</span><strong data-i18n="stepFourTitle">Let the session continue</strong><p data-i18n="stepFourCopy">Step away again while the Mac keeps building, testing, or running the agent.</p></li>
+      </ol>
+    </section>
+
+    <section class="section audience" id="audience">
+      <div class="section-heading">
+        <p class="eyebrow" data-i18n="audienceEyebrow">Designed for</p>
+        <h2 data-i18n="audienceTitle">Developers who need control, not a full workstation on a phone.</h2>
+      </div>
+      <div class="audience-list">
+        <p data-i18n="audienceOne">AI coding users running Codex, Cursor, Claude Code, Gemini CLI, Aider, or similar tools on a Mac.</p>
+        <p data-i18n="audienceTwo">macOS developers who need occasional GUI control for browser previews, local servers, permission prompts, or terminal confirmations.</p>
+        <p data-i18n="audienceThree">Privacy-conscious builders who prefer LAN-first or private-network access over generic third-party remote desktop routing.</p>
+      </div>
+    </section>
+
+    <section class="cta-band" aria-labelledby="cta-title">
+      <img src="assets/vibelink-logo.png" alt="" width="72" height="72">
+      <h2 id="cta-title" data-i18n="ctaTitle">Build a better remote loop for local Mac development.</h2>
+      <p data-i18n="ctaCopy">Explore the source, run the MVP, and adapt the phone-first controller to your own development workflow.</p>
+      <a class="primary-action" href="https://github.com/IceSeaOnly/vibe_link" target="_blank" rel="noreferrer" data-i18n="ctaButton">Open GitHub repository</a>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>© <span id="year"></span> <span data-i18n="copyright">Hangzhou Duomo Technology Co., Ltd.</span></p>
+    <a href="https://github.com/IceSeaOnly/vibe_link" target="_blank" rel="noreferrer">github.com/IceSeaOnly/vibe_link</a>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
