@@ -3,7 +3,7 @@ import Foundation
 public enum StartupLog {
     public static func printBanner(config: ServerConfig) {
         let addresses = NetworkInfo.localIPv4Addresses()
-        print("VibeLink Mac Server 0.2.0")
+        print("VibeLink Mac Server 0.3.0")
         print("Listening: http://0.0.0.0:\(config.port)")
         for address in addresses {
             print("LAN URL: http://\(address):\(config.port)")

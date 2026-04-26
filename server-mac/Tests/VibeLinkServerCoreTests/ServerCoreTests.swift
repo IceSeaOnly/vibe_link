@@ -60,7 +60,7 @@ final class ServerCoreTests: XCTestCase {
         let response = HealthResponse(
             ok: true,
             name: "VibeLink Mac Server",
-            version: "0.2.0",
+            version: "0.3.0",
             streamUrl: "/stream",
             lowLatencyStreamUrl: "/stream-ws",
             videoStreamUrl: "/stream-h264",
@@ -115,6 +115,59 @@ final class ServerCoreTests: XCTestCase {
         XCTAssertNoThrow(try JSONCoding.decoder.decode(PermissionsResponse.self, from: authorized.body))
     }
 
+    func testCaptureSourcesRouteReturnsDisplaysAndWindows() async throws {
+        let store = AdminConfigStore(url: FileManager.default.temporaryDirectory.appendingPathComponent("vibelink-\(UUID().uuidString).json"))
+        let manager = CaptureSourceManager(provider: StaticCaptureSourceProvider(sources: [
+            CaptureSource(id: "display:1", type: .display, name: "Built-in Display", appName: nil, x: 0, y: 0, width: 1512, height: 982, scale: 2, isMain: true),
+            CaptureSource(id: "window:42", type: .window, name: "Terminal - zsh", appName: "Terminal", x: 100, y: 120, width: 900, height: 600, scale: 1, isMain: false)
+        ]))
+        let router = Router(config: ServerConfig(port: 8765, token: "secret"), registry: PresetRegistry(workingDirectory: "/tmp"), commandRunner: CommandRunner(), store: store, captureSources: manager)
+
+        let response = await router.route(HTTPRequest(method: "GET", path: "/api/capture-sources", query: [:], headers: ["authorization": "Bearer secret"], body: Data()))
+        let decoded = try JSONCoding.decoder.decode(CaptureSourcesResponse.self, from: response.body)
+
+        XCTAssertEqual(response.status, 200)
+        XCTAssertEqual(decoded.sources.map(\.id), ["display:1", "window:42"])
+        XCTAssertEqual(decoded.selected?.id, "display:1")
+        XCTAssertEqual(decoded.sources.last?.type, .window)
+    }
+
+    func testCaptureSourceSelectionPersistsInManager() async throws {
+        let store = AdminConfigStore(url: FileManager.default.temporaryDirectory.appendingPathComponent("vibelink-\(UUID().uuidString).json"))
+        let activator = RecordingCaptureSourceActivator()
+        let manager = CaptureSourceManager(provider: StaticCaptureSourceProvider(sources: [
+            CaptureSource(id: "display:1", type: .display, name: "Built-in Display", appName: nil, x: 0, y: 0, width: 1512, height: 982, scale: 2, isMain: true),
+            CaptureSource(id: "window:42", type: .window, name: "Terminal - zsh", appName: "Terminal", x: 100, y: 120, width: 900, height: 600, scale: 1, isMain: false)
+        ]), activator: activator)
+        let router = Router(config: ServerConfig(port: 8765, token: "secret"), registry: PresetRegistry(workingDirectory: "/tmp"), commandRunner: CommandRunner(), store: store, captureSources: manager)
+        let requestBody = try JSONCoding.encoder.encode(CaptureSourceSelectionRequest(id: "window:42"))
+
+        let response = await router.route(HTTPRequest(method: "POST", path: "/api/capture-source", query: [:], headers: ["authorization": "Bearer secret"], body: requestBody))
+        let decoded = try JSONCoding.decoder.decode(CaptureSourcesResponse.self, from: response.body)
+
+        XCTAssertEqual(response.status, 200)
+        XCTAssertEqual(decoded.selected?.id, "window:42")
+        XCTAssertEqual(manager.selectedSource()?.id, "window:42")
+        XCTAssertEqual(activator.activatedSourceIds, ["window:42"])
+    }
+
+    func testWindowFocusControllerFindsOwnerProcessForWindowID() {
+        let info: [[String: Any]] = [
+            [
+                kCGWindowNumber as String: UInt32(41),
+                kCGWindowOwnerPID as String: pid_t(111)
+            ],
+            [
+                kCGWindowNumber as String: UInt32(42),
+                kCGWindowOwnerPID as String: pid_t(222)
+            ]
+        ]
+
+        let pid = WindowFocusController.ownerProcessIdentifier(windowID: 42, from: info)
+
+        XCTAssertEqual(pid, 222)
+    }
+
     func testDisplayPointMappingUsesGlobalDisplayOrigin() {
         let display = DisplayInfo(id: "2", name: "External", x: 1512, y: -100, width: 1000, height: 500, scale: 1, isMain: false)
 
@@ -122,6 +175,48 @@ final class ServerCoreTests: XCTestCase {
 
         XCTAssertEqual(point.x, 2012, accuracy: 0.001)
         XCTAssertEqual(point.y, 150, accuracy: 0.001)
+    }
+
+    func testWindowCaptureSourcePointMappingUsesWindowOrigin() {
+        let source = CaptureSource(id: "window:42", type: .window, name: "Terminal", appName: "Terminal", x: 100, y: 120, width: 900, height: 600, scale: 1, isMain: false)
+
+        let point = InputController.mapPoint(x: 450, y: 300, sourceWidth: 900, sourceHeight: 600, captureSource: source)
+
+        XCTAssertEqual(point.x, 550, accuracy: 0.001)
+        XCTAssertEqual(point.y, 420, accuracy: 0.001)
+    }
+
+    func testWindowSourceInputFocusesForAbsoluteClickButNotTrackpadMove() {
+        XCTAssertTrue(InputController.shouldFocusWindowSource(for: "tap"))
+        XCTAssertTrue(InputController.shouldFocusWindowSource(for: "drag"))
+        XCTAssertTrue(InputController.shouldFocusWindowSource(for: "mouseDown"))
+        XCTAssertTrue(InputController.shouldFocusWindowSource(for: "mouseUp"))
+        XCTAssertTrue(InputController.shouldFocusWindowSource(for: "text"))
+        XCTAssertFalse(InputController.shouldFocusWindowSource(for: "relativeMove"))
+    }
+
+    func testWindowCaptureCacheReusesStreamPerWindowID() {
+        let cache = WindowStreamCache<Int>()
+        var factoryCalls = 0
+
+        let first = try? cache.value(for: 42) {
+            factoryCalls += 1
+            return factoryCalls
+        }
+        let second = try? cache.value(for: 42) {
+            factoryCalls += 1
+            return factoryCalls
+        }
+        let third = try? cache.value(for: 43) {
+            factoryCalls += 1
+            return factoryCalls
+        }
+
+        XCTAssertEqual(first, 1)
+        XCTAssertEqual(second, 1)
+        XCTAssertEqual(third, 2)
+        XCTAssertEqual(cache.count, 2)
+        XCTAssertEqual(factoryCalls, 2)
     }
 
     func testAdminConfigStorePersistsButtonAndQuickTextOrder() throws {
@@ -307,5 +402,23 @@ final class ServerCoreTests: XCTestCase {
         XCTAssertEqual(response.status, 200)
         XCTAssertEqual(decoded.map(\.id), ["custom_click"])
         XCTAssertEqual(decoded.first?.y, 20)
+    }
+}
+
+private final class RecordingCaptureSourceActivator: CaptureSourceActivating, @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String] = []
+
+    var activatedSourceIds: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
+    }
+
+    func activate(source: CaptureSource?) {
+        guard let source else { return }
+        lock.lock()
+        values.append(source.id)
+        lock.unlock()
     }
 }

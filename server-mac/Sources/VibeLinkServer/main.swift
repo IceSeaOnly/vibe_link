@@ -12,9 +12,10 @@ do {
     let registry = PresetRegistry()
     let store = AdminConfigStore()
     let runner = CommandRunner()
-    let router = Router(config: config, registry: registry, commandRunner: runner, store: store)
-    let adminRouter = AdminRouter(config: config, store: store)
-    let server = HTTPServer(config: config, router: router)
+    let captureSources = CaptureSourceManager()
+    let router = Router(config: config, registry: registry, commandRunner: runner, store: store, captureSources: captureSources)
+    let adminRouter = AdminRouter(config: config, store: store, captureSources: captureSources)
+    let server = HTTPServer(config: config, router: router, captureSources: captureSources)
     let adminServer = HTTPServer(config: ServerConfig(port: config.adminPort, adminPort: config.adminPort, token: config.token), router: adminRouter, publishesBonjour: false)
 
     try server.start()

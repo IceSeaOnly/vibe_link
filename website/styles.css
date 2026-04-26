@@ -364,6 +364,15 @@ img {
   object-position: top;
 }
 
+.screenshot-rail .phone-shot {
+  max-width: min(100%, 520px);
+}
+
+.screenshot-rail .phone-shot img {
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
+}
+
 .screenshot-rail figcaption {
   padding: 14px 16px 16px;
   color: var(--muted);

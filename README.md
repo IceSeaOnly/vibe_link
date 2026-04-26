@@ -12,7 +12,7 @@
 
 VibeLink is a phone-first remote development controller for macOS. It lets an Android phone view a Mac screen, send precise pointer and keyboard actions, paste text into the active app, trigger saved click points, and run preconfigured development commands over a local network.
 
-The project is currently an end-to-end MVP. It is intentionally lightweight: a Swift command-line server on macOS, a compact native Android client, H.264-over-WebSocket screen streaming with JPEG/MJPEG fallbacks, and JSON APIs protected by a shared token. The downloadable Android APK is still only about **1.1 MB**, so the phone client stays closer to a focused remote control than a heavy remote desktop suite. The Android client and web admin console both support English and Chinese UI.
+The project is currently an end-to-end MVP. It is intentionally lightweight: a Swift command-line server on macOS, a compact native Android client, H.264-over-WebSocket screen and window streaming with JPEG/MJPEG fallbacks, and JSON APIs protected by a shared token. The Android APK is still only about **1.2 MB**, so the phone client stays closer to a focused remote control than a heavy remote desktop suite. The Android client and web admin console both support English and Chinese UI.
 
 [中文 README](README.zh-CN.md)
 
@@ -35,14 +35,14 @@ The project is currently an end-to-end MVP. It is intentionally lightweight: a S
 
 ## Features
 
-- **Low-latency Mac screen stream**: the macOS server captures the display and serves H.264 Annex-B video over WebSocket, with JPEG WebSocket and MJPEG fallbacks.
-- **Display selection**: the server exposes active macOS displays and the Android client can switch streams by display.
+- **Low-latency Mac stream**: the macOS server captures a display or a single window and serves H.264 Annex-B video over WebSocket, with JPEG WebSocket and MJPEG fallbacks.
+- **Display and window source picker**: the server exposes active macOS displays and visible windows, and Android provides a large touch-friendly Source picker for switching streams.
 - **Three mobile interaction modes**: screen view, pointer click mode, and trackpad mode.
 - **Frame dropping for low latency**: the Android H.264 player drains the socket on a reader thread, drops stale frames, and recovers from the latest keyframe.
 - **Remote input control**: tap, double tap, right click, drag, scroll, cursor move, relative trackpad movement, and common keyboard shortcuts.
 - **Text paste workflow**: send text to the current Mac focus through clipboard paste, with an optional Enter key.
 - **Mobile keyboard bridge**: type from the Android soft keyboard and forward characters, backspace, and Enter to the Mac.
-- **Tiny Android client**: the current downloadable APK is about **1.1 MB**, keeping installation and updates lightweight.
+- **Tiny Android client**: the current APK is about **1.2 MB**, keeping installation and updates lightweight.
 - **Bilingual UI**: switch the Android client between English and Chinese, with localized built-in action labels and status messages.
 - **Discovery and QR pairing**: the server advertises itself on the LAN, exposes pairing metadata, and the Android client can fill connection details by discovery or QR scan.
 - **macOS permission status**: the admin console reports Screen Recording and Accessibility permission status with setup guidance.
@@ -50,6 +50,7 @@ The project is currently an end-to-end MVP. It is intentionally lightweight: a S
 - **Quick texts**: reusable prompts or snippets that can be sent from the phone.
 - **Preconfigured commands**: run server-side command presets and poll command output from Android.
 - **Shortcut buttons**: save named screen coordinates and trigger them later from the phone.
+- **Window-aware input mapping**: absolute clicks, long-press drags, shortcuts, and keyboard actions are mapped through the selected display or window source.
 - **Web admin console**: manage mobile control buttons, quick replies, command presets, and shortcut points at the admin port.
 - **Adaptive Android launcher icon**: packaged app icon with a consistent English launcher label.
 - **Local-first MVP**: designed for same-LAN use with explicit token authentication.
@@ -88,16 +89,28 @@ Traditional remote desktop software can show the screen, but it usually treats t
 ## Screenshots
 
 <p align="center">
-  <img src="screenshots/en/app.png" alt="VibeLink Android app" width="280">
+  <img src="screenshots/en/v0.3.0.jpg" alt="VibeLink Android app streaming a Mac" width="280">
 </p>
 
-| Control Buttons | Quick Replies |
+| Source Picker | Control Surface |
 | --- | --- |
-| ![Control buttons](screenshots/en/Control_buttons.png) | ![Quick replies](screenshots/en/Quick_replies.png) |
+| ![Source picker](screenshots/en/sources.jpg) | ![Control surface](screenshots/en/app.png) |
 
-| Commands | Shortcuts |
+| Admin Source Tab | Permission Status |
 | --- | --- |
-| ![Commands](screenshots/en/Commands.png) | ![Shortcuts](screenshots/en/Shortcuts.png) |
+| ![Source management](screenshots/en/Source.png) | ![Permission status](screenshots/en/Abilities.png) |
+
+| Pairing | Control Buttons |
+| --- | --- |
+| ![Pairing](screenshots/en/Pair.png) | ![Control buttons](screenshots/en/Control_buttons.png) |
+
+| Quick Replies | Commands |
+| --- | --- |
+| ![Quick replies](screenshots/en/Quick_replies.png) | ![Commands](screenshots/en/Commands.png) |
+
+| Shortcuts |
+| --- | --- |
+| ![Shortcuts](screenshots/en/Shortcuts.png) |
 
 ## Architecture
 
@@ -106,7 +119,7 @@ flowchart LR
     Android["Android Client<br/>Native Kotlin UI"] -->|"GET /health<br/>WS /stream-h264?token=..."| Server["macOS Server<br/>SwiftPM CLI"]
     Android -->|"POST /api/control<br/>POST /api/commands/run"| Server
     Admin["Web Admin Console<br/>port + 1"] -->|"GET/POST /admin/api/config"| Server
-    Server --> Capture["Screen Capture + H.264<br/>CGDisplay + VideoToolbox"]
+    Server --> Capture["Display/Window Capture + H.264<br/>CGDisplay + ScreenCaptureKit + VideoToolbox"]
     Server --> Input["Input Simulation<br/>CGEvent + Clipboard"]
     Server --> Commands["Preset Commands<br/>zsh -lc"]
     Server --> Config["Admin Config<br/>Application Support/VibeLink"]
@@ -120,10 +133,11 @@ flowchart LR
 - Runtime shape: command-line service process
 - Default app port: `8765`
 - Default admin port: `8766`
+- Stream source: full display capture or single-window capture
 - Screen stream: H.264 Annex-B over WebSocket, JPEG WebSocket fallback, and MJPEG HTTP fallback
 - Control channel: HTTP JSON API
 - Input simulation: macOS `CGEvent` and clipboard
-- Screen capture: `CGDisplayCreateImage`; H.264 encoding through VideoToolbox
+- Capture: `CGDisplayCreateImage` for displays, ScreenCaptureKit for windows, and VideoToolbox for H.264 encoding
 
 ### Android client
 
@@ -137,6 +151,7 @@ flowchart LR
 - UI: native Android views
 - Network layer: standard `HttpURLConnection`
 - Stream rendering: H.264 through `MediaCodec` into `TextureView`, with bitmap fallback streams
+- Source picker: touch-friendly display/window selection with structured labels and current-source highlighting
 - Localization: Java-backed text tables, Android string resources, and in-app language toggle
 
 ## Repository Layout
@@ -254,6 +269,8 @@ GET /stream?token=<token>&displayId=<display-id>
 | `GET` | `/stream-ws?token=<token>` | JPEG WebSocket fallback screen stream |
 | `GET` | `/stream-h264?token=<token>` | H.264 Annex-B WebSocket screen stream |
 | `GET` | `/api/displays` | Active macOS display list |
+| `GET` | `/api/capture-sources` | Available display and window stream sources |
+| `POST` | `/api/capture-source` | Select the active display or window stream source |
 | `GET` | `/api/permissions` | macOS permission status and guidance |
 | `GET` | `/api/pairing-info` | LAN URLs, token, and QR pairing payload |
 | `GET` | `/api/client-config` | Full mobile configuration snapshot |
@@ -275,7 +292,7 @@ Supported `/api/control` action types include:
 ```text
 tap, doubleTap, rightClick, drag, scroll, text, clipboard,
 move, relativeMove, clickCurrent, doubleClickCurrent, rightClickCurrent,
-mouseDownCurrent, relativeDrag, mouseUpCurrent,
+mouseDown, mouseDownCurrent, relativeDrag, mouseUp, mouseUpCurrent,
 backspace, enter, cmdEnter, copy, paste, selectAll, escape, interrupt, undo, close
 ```
 
@@ -320,10 +337,10 @@ Useful documents:
 
 ## Roadmap
 
-- Evaluate WebRTC or hardware capture paths for lower latency and better network adaptation.
+- Evaluate WebRTC or hardware capture paths for better network adaptation beyond the current H.264 WebSocket stream.
 - Add device-key-based trust on top of the current shared-token pairing flow.
 - Add end-to-end encryption beyond the current shared-token MVP.
-- Support window-level or region-level capture.
+- Improve window capture filtering, window identity matching, and optional region-level capture.
 - Improve shortcut buttons with accessibility element lookup or visual matching.
 - Add richer command audit logs and high-risk command confirmation.
 - Add iOS support after the Android MVP stabilizes.

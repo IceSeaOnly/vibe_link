@@ -69,7 +69,7 @@ public enum PairingProvider {
         let uri = "vibelink://pair?url=\(urlEncode(preferredUrl))&token=\(urlEncode(config.token))"
         return PairingInfo(
             appName: "VibeLink",
-            version: "0.2.0",
+            version: "0.3.0",
             serverUrls: serverUrls,
             adminUrls: adminUrls,
             token: config.token,

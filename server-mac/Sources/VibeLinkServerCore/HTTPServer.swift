@@ -9,13 +9,15 @@ public protocol HTTPRouting: Sendable {
 public final class HTTPServer {
     private let config: ServerConfig
     private let router: any HTTPRouting
+    private let captureSources: CaptureSourceManager
     private let publishesBonjour: Bool
     private let queue = DispatchQueue(label: "vibelink.http.server")
     private var listener: NWListener?
 
-    public init(config: ServerConfig, router: any HTTPRouting, publishesBonjour: Bool = true) {
+    public init(config: ServerConfig, router: any HTTPRouting, captureSources: CaptureSourceManager = CaptureSourceManager(), publishesBonjour: Bool = true) {
         self.config = config
         self.router = router
+        self.captureSources = captureSources
         self.publishesBonjour = publishesBonjour
     }
 
@@ -131,15 +133,15 @@ public final class HTTPServer {
                 connection.cancel()
                 return
             }
-            self?.sendNextFrame(on: connection, displayId: request.query["displayId"])
+            self?.sendNextFrame(on: connection, displayId: request.query["displayId"], captureSource: self?.captureSources.selectedSource())
         })
     }
 
-    private func sendNextFrame(on connection: NWConnection, displayId: String?) {
+    private func sendNextFrame(on connection: NWConnection, displayId: String?, captureSource: CaptureSource?) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             do {
-                let jpeg = try ScreenCapture.captureJPEG(displayId: displayId)
+                let jpeg = try CaptureImageResolver.captureJPEG(source: captureSource, fallbackDisplayId: displayId)
                 var frame = Data()
                 frame.append(Data("--frame\r\n".utf8))
                 frame.append(Data("Content-Type: image/jpeg\r\n".utf8))
@@ -154,7 +156,7 @@ public final class HTTPServer {
                         return
                     }
                     self?.queue.asyncAfter(deadline: .now() + .milliseconds(250)) {
-                        self?.sendNextFrame(on: connection, displayId: displayId)
+                        self?.sendNextFrame(on: connection, displayId: displayId, captureSource: captureSource)
                     }
                 })
             } catch {
@@ -190,15 +192,15 @@ public final class HTTPServer {
                 connection.cancel()
                 return
             }
-            self?.sendNextWebSocketFrame(on: connection, displayId: request.query["displayId"])
+            self?.sendNextWebSocketFrame(on: connection, displayId: request.query["displayId"], captureSource: self?.captureSources.selectedSource())
         })
     }
 
-    private func sendNextWebSocketFrame(on connection: NWConnection, displayId: String?) {
+    private func sendNextWebSocketFrame(on connection: NWConnection, displayId: String?, captureSource: CaptureSource?) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             do {
-                let jpeg = try ScreenCapture.captureJPEG(displayId: displayId)
+                let jpeg = try CaptureImageResolver.captureJPEG(source: captureSource, fallbackDisplayId: displayId)
                 let frame = self.webSocketBinaryFrame(payload: jpeg)
                 connection.send(content: frame, completion: .contentProcessed { [weak self] error in
                     if let error {
@@ -207,7 +209,7 @@ public final class HTTPServer {
                         return
                     }
                     self?.queue.asyncAfter(deadline: .now() + .milliseconds(100)) {
-                        self?.sendNextWebSocketFrame(on: connection, displayId: displayId)
+                        self?.sendNextWebSocketFrame(on: connection, displayId: displayId, captureSource: captureSource)
                     }
                 })
             } catch {
@@ -252,10 +254,14 @@ public final class HTTPServer {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             do {
-                let display = ScreenProvider.display(id: displayId)
+                let source = self.captureSources.selectedSource()
+                let display = source ?? {
+                    let display = ScreenProvider.display(id: displayId)
+                    return CaptureSource(id: "display:\(display.id)", type: .display, name: display.name, appName: nil, x: display.x, y: display.y, width: display.width, height: display.height, scale: display.scale, isMain: display.isMain)
+                }()
                 let settings = H264StreamSettings.lowLatency
                 let encoder = try H264VideoEncoder(width: display.width, height: display.height, settings: settings)
-                self.sendNextH264Frame(on: connection, displayId: displayId, encoder: encoder, settings: settings)
+                self.sendNextH264Frame(on: connection, displayId: displayId, captureSource: source, encoder: encoder, settings: settings)
             } catch {
                 print("H.264 stream setup failed: \(error.localizedDescription)")
                 connection.cancel()
@@ -263,14 +269,14 @@ public final class HTTPServer {
         }
     }
 
-    private func sendNextH264Frame(on connection: NWConnection, displayId: String?, encoder: H264VideoEncoder, settings: H264StreamSettings) {
+    private func sendNextH264Frame(on connection: NWConnection, displayId: String?, captureSource: CaptureSource?, encoder: H264VideoEncoder, settings: H264StreamSettings) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             do {
-                let image = try ScreenCapture.captureImage(displayId: displayId)
+                let image = try CaptureImageResolver.captureImage(source: captureSource, fallbackDisplayId: displayId)
                 guard let payload = try encoder.encode(image: image), !payload.isEmpty else {
                     self.queue.asyncAfter(deadline: .now() + .milliseconds(settings.frameIntervalMilliseconds)) {
-                        self.sendNextH264Frame(on: connection, displayId: displayId, encoder: encoder, settings: settings)
+                        self.sendNextH264Frame(on: connection, displayId: displayId, captureSource: captureSource, encoder: encoder, settings: settings)
                     }
                     return
                 }
@@ -282,7 +288,7 @@ public final class HTTPServer {
                         return
                     }
                     self?.queue.asyncAfter(deadline: .now() + .milliseconds(settings.frameIntervalMilliseconds)) {
-                        self?.sendNextH264Frame(on: connection, displayId: displayId, encoder: encoder, settings: settings)
+                        self?.sendNextH264Frame(on: connection, displayId: displayId, captureSource: captureSource, encoder: encoder, settings: settings)
                     }
                 })
             } catch {

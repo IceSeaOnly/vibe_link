@@ -7,6 +7,7 @@ import android.os.Build
 import android.view.Surface
 import android.view.TextureView
 import java.io.Closeable
+import java.net.SocketException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -30,6 +31,10 @@ class H264VideoStreamPlayer(
                 reader.readFrames { payload ->
                     if (!closed.get()) buffer.push(payload)
                 }
+            } catch (_: SocketException) {
+                // Closing the stream during Disconnect wakes the reader with "Socket closed".
+            } catch (_: Exception) {
+                // Treat reader failures as end-of-stream; the owner will update connection state.
             } finally {
                 buffer.close()
             }

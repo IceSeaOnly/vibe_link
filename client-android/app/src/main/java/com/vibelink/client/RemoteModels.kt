@@ -20,6 +20,24 @@ data class RemoteDisplay(
     val isMain: Boolean
 )
 
+data class RemoteCaptureSource(
+    val id: String,
+    val type: String,
+    val name: String,
+    val appName: String?,
+    val x: Int,
+    val y: Int,
+    val width: Int,
+    val height: Int,
+    val scale: Double,
+    val isMain: Boolean
+)
+
+data class CaptureSourcesInfo(
+    val sources: List<RemoteCaptureSource>,
+    val selected: RemoteCaptureSource?
+)
+
 enum class InteractionMode {
     SCREEN,
     POINTER,

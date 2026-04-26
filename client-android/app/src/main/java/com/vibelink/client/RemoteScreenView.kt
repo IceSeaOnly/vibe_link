@@ -24,12 +24,12 @@ class RemoteScreenView @JvmOverloads constructor(
         fun onMove(x: Int, y: Int, imageWidth: Int, imageHeight: Int)
         fun onDrag(fromX: Int, fromY: Int, toX: Int, toY: Int, imageWidth: Int, imageHeight: Int, durationMs: Long)
         fun onRelativeMove(deltaX: Int, deltaY: Int)
-        fun onCurrentTap()
-        fun onCurrentDoubleTap()
-        fun onCurrentRightClick()
-        fun onCurrentDragStart()
+        fun onCurrentTap(x: Int, y: Int, imageWidth: Int, imageHeight: Int)
+        fun onCurrentDoubleTap(x: Int, y: Int, imageWidth: Int, imageHeight: Int)
+        fun onCurrentRightClick(x: Int, y: Int, imageWidth: Int, imageHeight: Int)
+        fun onCurrentDragStart(x: Int, y: Int, imageWidth: Int, imageHeight: Int)
         fun onCurrentDragMove(deltaX: Int, deltaY: Int)
-        fun onCurrentDragEnd()
+        fun onCurrentDragEnd(x: Int, y: Int, imageWidth: Int, imageHeight: Int)
         fun onScroll(deltaX: Int, deltaY: Int)
         fun onShortcutPointSelected(x: Int, y: Int, imageWidth: Int, imageHeight: Int)
         fun onViewportChanged(geometry: ImageGeometry)
@@ -65,6 +65,7 @@ class RemoteScreenView @JvmOverloads constructor(
     private var panX = 0f
     private var panY = 0f
     private var shortcutCaptureMode = false
+    private var trackpadCursorSynced = false
     var listener: Listener? = null
     var noFrameText: String = "No frame"
         set(value) {
@@ -91,6 +92,7 @@ class RemoteScreenView @JvmOverloads constructor(
             }
             if (value == InteractionMode.TRACKPAD) {
                 bitmap?.let { ensureTrackpadCursor(it) }
+                trackpadCursorSynced = false
             }
             notifyViewportChanged()
         }
@@ -124,6 +126,7 @@ class RemoteScreenView @JvmOverloads constructor(
         if (old != null && old != frame && !old.isRecycled) old.recycle()
         if (interactionMode == InteractionMode.TRACKPAD) {
             ensureTrackpadCursor(frame)
+            trackpadCursorSynced = false
         }
         notifyViewportChanged(frame)
         invalidate()
@@ -377,7 +380,10 @@ class RemoteScreenView @JvmOverloads constructor(
         if (longPressReady && distance > dragThresholdPx()) {
             if (!isTrackpadDragging) {
                 isTrackpadDragging = true
-                listener?.onCurrentDragStart()
+                trackpadTarget()?.let {
+                    trackpadCursorSynced = true
+                    listener?.onCurrentDragStart(it.x, it.y, it.imageWidth, it.imageHeight)
+                }
             }
             sendTrackpadDelta(event.x, event.y, event.eventTime, dragged = true)
             return
@@ -392,7 +398,9 @@ class RemoteScreenView @JvmOverloads constructor(
 
     private fun handleTrackpadUp(event: MotionEvent) {
         if (isTrackpadDragging) {
-            listener?.onCurrentDragEnd()
+            trackpadTarget()?.let {
+                listener?.onCurrentDragEnd(it.x, it.y, it.imageWidth, it.imageHeight)
+            }
             isTrackpadDragging = false
             longPressReady = false
             movedPointer = false
@@ -407,12 +415,18 @@ class RemoteScreenView @JvmOverloads constructor(
 
         if (isDoubleTap(event)) {
             lastTapTime = 0L
-            listener?.onCurrentDoubleTap()
+            trackpadTarget()?.let {
+                trackpadCursorSynced = true
+                listener?.onCurrentDoubleTap(it.x, it.y, it.imageWidth, it.imageHeight)
+            }
         } else {
             rememberTap(event)
             postDelayed({
                 if (lastTapTime == event.eventTime) {
-                    listener?.onCurrentTap()
+                    trackpadTarget()?.let {
+                        trackpadCursorSynced = true
+                        listener?.onCurrentTap(it.x, it.y, it.imageWidth, it.imageHeight)
+                    }
                 }
             }, 330L)
         }
@@ -431,6 +445,12 @@ class RemoteScreenView @JvmOverloads constructor(
         lastMoveSentAt = now
         if (frame != null) {
             moveTrackpadCursor(delta.dx, delta.dy, frame)
+            if (!trackpadCursorSynced) {
+                trackpadTarget(frame)?.let {
+                    listener?.onMove(it.x, it.y, it.imageWidth, it.imageHeight)
+                    trackpadCursorSynced = true
+                }
+            }
         }
         if (dragged) {
             listener?.onCurrentDragMove(delta.dx, delta.dy)
@@ -456,7 +476,10 @@ class RemoteScreenView @JvmOverloads constructor(
                 if (abs(deltaX) > scrollThresholdPx() || abs(deltaY) > scrollThresholdPx()) {
                     listener?.onScroll(deltaX, deltaY)
                 } else if (duration < 420L) {
-                    listener?.onCurrentRightClick()
+                    trackpadTarget()?.let {
+                        trackpadCursorSynced = true
+                        listener?.onCurrentRightClick(it.x, it.y, it.imageWidth, it.imageHeight)
+                    }
                 }
                 suppressNextUp = true
                 parent?.requestDisallowInterceptTouchEvent(false)
@@ -508,6 +531,11 @@ class RemoteScreenView @JvmOverloads constructor(
         cursorImageX = x
         cursorImageY = y
         invalidate()
+    }
+
+    private fun trackpadTarget(frame: Bitmap? = bitmap): AbsolutePointerTarget? {
+        val currentFrame = frame ?: return null
+        return TrackpadPointerCommand.target(cursorImageX, cursorImageY, currentFrame.width, currentFrame.height)
     }
 
     private fun ensureTrackpadCursor(frame: Bitmap) {

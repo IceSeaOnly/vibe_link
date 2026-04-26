@@ -5,8 +5,10 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
 import android.net.Uri
@@ -27,8 +29,6 @@ import android.view.ViewGroup
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -38,7 +38,6 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import org.json.JSONObject
@@ -72,7 +71,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
     private lateinit var displayContainer: LinearLayout
     private lateinit var displayLabel: TextView
     private lateinit var brandText: TextView
-    private lateinit var displaySpinner: Spinner
+    private lateinit var captureSourceButton: Button
     private lateinit var textInput: EditText
     private lateinit var keyboardInput: EditText
     private lateinit var submitCheck: CheckBox
@@ -97,6 +96,8 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
     private var isConfigExpanded = true
     private var selectedDisplayId: String? = null
     private var remoteDisplays: List<RemoteDisplay> = emptyList()
+    private var selectedCaptureSource: RemoteCaptureSource? = null
+    private var remoteCaptureSources: List<RemoteCaptureSource> = emptyList()
     private var lastScreenWidth = 0
     private var lastScreenHeight = 0
     private var clientConfigGeneration = 0
@@ -394,17 +395,29 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         }
         val displayHeaderRow = row()
         displayLabel = TextView(this).apply {
-            text = t(AppText.Key.DISPLAY)
+            text = t(AppText.Key.CAPTURE_SOURCE)
             textSize = 16f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(0xFF111827.toInt())
             gravity = Gravity.CENTER_VERTICAL
         }
         displayHeaderRow.addView(displayLabel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(34)))
-        displaySpinner = Spinner(this).apply {
-            setPadding(0, 0, 0, 0)
+        captureSourceButton = Button(this).apply {
+            isAllCaps = false
+            minHeight = dp(34)
+            minimumHeight = dp(34)
+            minWidth = 0
+            minimumWidth = 0
+            includeFontPadding = false
+            textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            setPadding(dp(10), 0, dp(10), 0)
+            styleButton(this, ButtonStyle.SECONDARY)
         }
-        displayHeaderRow.addView(displaySpinner, LinearLayout.LayoutParams(0, dp(34), 1f).apply {
+        displayHeaderRow.addView(captureSourceButton, LinearLayout.LayoutParams(0, dp(34), 1f).apply {
             leftMargin = dp(8)
         })
         displayContainer.addView(displayHeaderRow, matchWrap())
@@ -512,21 +525,31 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
                 } catch (_: Exception) {
                     health.displays
                 }
+                val captureInfo = try {
+                    client.getCaptureSources()
+                } catch (_: Exception) {
+                    CaptureSourcesInfo(displays.toCaptureSources(), null)
+                }
+                val selectedSource = CaptureSourceUi.preferredSource(captureInfo)
                 prefs.edit().putString("serverUrl", serverUrl).putString("token", token).apply()
                 mainHandler.post {
                     apiClient = client
                     healthFailures = 0
-                    lastScreenWidth = health.screenWidth
-                    lastScreenHeight = health.screenHeight
+                    lastScreenWidth = selectedSource?.width?.takeIf { it > 0 } ?: health.screenWidth
+                    lastScreenHeight = selectedSource?.height?.takeIf { it > 0 } ?: health.screenHeight
                     remoteDisplays = displays
-                    selectedDisplayId = displays.firstOrNull { it.isMain }?.id ?: displays.firstOrNull()?.id
+                    remoteCaptureSources = captureInfo.sources
+                    selectedCaptureSource = selectedSource
+                    selectedDisplayId = CaptureSourceUi.displayIdFor(selectedSource)
+                        ?: displays.firstOrNull { it.isMain }?.id
+                        ?: displays.firstOrNull()?.id
                     isConfigExpanded = false
                     setConnectionState(
                         ConnectionState.CONNECTED,
                         "${t(AppText.Key.CONNECTED)}: ${health.name} ${health.version} ${health.screenWidth}x${health.screenHeight}"
                     )
                     updateConfigVisibility()
-                    renderDisplays(displays)
+                    renderCaptureSources(captureInfo.sources)
                     startHealthChecks()
                     startStream(client)
                 }
@@ -545,11 +568,13 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         clientConfigGeneration++
         mainHandler.removeCallbacks(healthRunnable)
         mainHandler.removeCallbacks(clientConfigRunnable)
-        streamInput?.close()
+        runCatching { streamInput?.close() }
         streamInput = null
         apiClient = null
         selectedDisplayId = null
         remoteDisplays = emptyList()
+        selectedCaptureSource = null
+        remoteCaptureSources = emptyList()
         mainHandler.post {
             connectionState = ConnectionState.DISCONNECTED
             statusText.text = reason
@@ -604,45 +629,172 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         clientConfigRunnable.run()
     }
 
-    private fun renderDisplays(displays: List<RemoteDisplay>) {
+    private fun renderCaptureSources(sources: List<RemoteCaptureSource>) {
         displayContainer.visibility = View.VISIBLE
-        displaySpinner.onItemSelectedListener = null
-        if (displays.isEmpty()) {
-            displaySpinner.adapter = compactDisplayAdapter(listOf(t(AppText.Key.DEFAULT_STREAM)))
-            displaySpinner.isEnabled = false
+        if (sources.isEmpty()) {
+            captureSourceButton.text = t(AppText.Key.DEFAULT_SOURCE)
+            captureSourceButton.isEnabled = false
+            styleButton(captureSourceButton, ButtonStyle.DISABLED)
             return
         }
-        val labels = displays.map {
-            "${it.name} (${it.width}x${it.height})"
+        val selected = selectedCaptureSource ?: CaptureSourceUi.preferredSource(CaptureSourcesInfo(sources, null))
+        captureSourceButton.text = selected?.let { CaptureSourceUi.label(it) } ?: t(AppText.Key.DEFAULT_SOURCE)
+        captureSourceButton.isEnabled = sources.size > 1
+        styleButton(captureSourceButton, if (sources.size > 1) ButtonStyle.SECONDARY else ButtonStyle.DISABLED)
+        captureSourceButton.setOnClickListener {
+            showCaptureSourcePicker()
         }
-        displaySpinner.isEnabled = displays.size > 1
-        displaySpinner.adapter = compactDisplayAdapter(labels)
-        val selectedIndex = displays.indexOfFirst { it.id == selectedDisplayId }.coerceAtLeast(0)
-        displaySpinner.setSelection(selectedIndex, false)
-        displaySpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                val display = remoteDisplays.getOrNull(position) ?: return
-                if (display.id == selectedDisplayId) return
-                selectedDisplayId = display.id
-                lastScreenWidth = display.width
-                lastScreenHeight = display.height
-                apiClient?.let { startStream(it) }
-            }
+    }
 
-            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+    private fun showCaptureSourcePicker() {
+        val sources = remoteCaptureSources
+        if (sources.size <= 1) return
+
+        var dialog: AlertDialog? = null
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(16), dp(16), dp(12))
+            background = roundedDrawable(0xFFFFFFFF.toInt(), dp(22), 0xFFE2E8F0.toInt(), 1)
+        }
+        val title = TextView(this).apply {
+            text = t(AppText.Key.CAPTURE_SOURCE)
+            textSize = 20f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(0xFF0F172A.toInt())
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        content.addView(title, matchWrap().apply { bottomMargin = dp(12) })
+
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val selectedId = selectedCaptureSource?.id
+        sources.forEach { source ->
+            val selected = source.id == selectedId
+            val row = captureSourceOptionView(source, selected).apply {
+                setOnClickListener {
+                    dialog?.dismiss()
+                    if (!selected) selectCaptureSource(source)
+                }
+            }
+            list.addView(row, matchWrap().apply { bottomMargin = dp(8) })
+        }
+        val scroll = ScrollView(this).apply {
+            addView(list, matchWrap())
+        }
+        val maxHeight = (resources.displayMetrics.heightPixels * 0.68f).toInt()
+        val desiredHeight = (sources.size * dp(84) + dp(8)).coerceAtMost(maxHeight)
+        content.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, desiredHeight))
+
+        dialog = AlertDialog.Builder(this).create().apply {
+            setView(content)
+            setOnShowListener {
+                window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+                window?.setGravity(Gravity.BOTTOM)
+                window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            }
+        }
+        dialog.show()
+    }
+
+    private fun captureSourceOptionView(source: RemoteCaptureSource, selected: Boolean): View {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(72)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = roundedDrawable(
+                if (selected) 0xFFEFF6FF.toInt() else 0xFFFFFFFF.toInt(),
+                dp(16),
+                if (selected) 0xFF2563EB.toInt() else 0xFFE2E8F0.toInt(),
+                if (selected) 2 else 1
+            )
+        }
+        val badge = TextView(this).apply {
+            text = CaptureSourceUi.pickerBadge(source)
+            textSize = 11f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(if (selected) 0xFFFFFFFF.toInt() else 0xFF2563EB.toInt())
+            background = roundedDrawable(
+                if (selected) 0xFF2563EB.toInt() else 0xFFEFF6FF.toInt(),
+                dp(12),
+                if (selected) 0xFF2563EB.toInt() else 0xFFBFDBFE.toInt(),
+                1
+            )
+        }
+        card.addView(badge, LinearLayout.LayoutParams(dp(44), dp(44)).apply { rightMargin = dp(12) })
+
+        val textColumn = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val title = TextView(this).apply {
+            text = CaptureSourceUi.pickerTitle(source)
+            textSize = 16f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(0xFF111827.toInt())
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+        }
+        textColumn.addView(title, matchWrap())
+        val subtitleText = CaptureSourceUi.pickerSubtitle(source)
+        if (subtitleText.isNotBlank()) {
+            val subtitle = TextView(this).apply {
+                text = subtitleText
+                textSize = 12f
+                setTextColor(0xFF64748B.toInt())
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            }
+            textColumn.addView(subtitle, matchWrap().apply { topMargin = dp(3) })
+        }
+        card.addView(textColumn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        return card
+    }
+
+    private fun selectCaptureSource(source: RemoteCaptureSource) {
+        val client = apiClient ?: return showError(t(AppText.Key.NOT_CONNECTED_ERROR))
+        val previous = selectedCaptureSource
+        selectedCaptureSource = source
+        selectedDisplayId = CaptureSourceUi.displayIdFor(source)
+        lastScreenWidth = source.width
+        lastScreenHeight = source.height
+        executor.execute {
+            try {
+                val updated = client.selectCaptureSource(source.id)
+                val selected = CaptureSourceUi.preferredSource(updated) ?: source
+                mainHandler.post {
+                    remoteCaptureSources = updated.sources.ifEmpty { remoteCaptureSources }
+                    selectedCaptureSource = selected
+                    selectedDisplayId = CaptureSourceUi.displayIdFor(selected)
+                    lastScreenWidth = selected.width
+                    lastScreenHeight = selected.height
+                    renderCaptureSources(remoteCaptureSources)
+                    startStream(client)
+                }
+            } catch (error: Exception) {
+                mainHandler.post {
+                    selectedCaptureSource = previous
+                    selectedDisplayId = CaptureSourceUi.displayIdFor(previous)
+                    renderCaptureSources(remoteCaptureSources)
+                    showError("${t(AppText.Key.SEND_FAILED)}: ${error.shortMessage()}")
+                }
+            }
         }
     }
 
     private fun startStream(client: ApiClient) {
         val generation = ++streamGeneration
-        val displayId = selectedDisplayId
-        streamInput?.close()
+        val source = selectedCaptureSource
+        val displayId = CaptureSourceUi.displayIdFor(source) ?: selectedDisplayId
+        runCatching { streamInput?.close() }
         streamInput = null
         executor.execute {
             var h264Rendered = false
             try {
-                val width = evenDimension(lastScreenWidth.takeIf { it > 0 } ?: remoteDisplays.firstOrNull { it.id == displayId }?.width ?: client.getHealth().screenWidth)
-                val height = evenDimension(lastScreenHeight.takeIf { it > 0 } ?: remoteDisplays.firstOrNull { it.id == displayId }?.height ?: client.getHealth().screenHeight)
+                val width = evenDimension(source?.width?.takeIf { it > 0 } ?: lastScreenWidth.takeIf { it > 0 } ?: remoteDisplays.firstOrNull { it.id == displayId }?.width ?: client.getHealth().screenWidth)
+                val height = evenDimension(source?.height?.takeIf { it > 0 } ?: lastScreenHeight.takeIf { it > 0 } ?: remoteDisplays.firstOrNull { it.id == displayId }?.height ?: client.getHealth().screenHeight)
                 val h264Reader = H264StreamReader.connect(serverInput.text.toString().trim(), tokenInput.text.toString().trim(), displayId)
                 val player = H264VideoStreamPlayer(videoView)
                 streamInput = Closeable {
@@ -659,7 +811,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
                     mainHandler.post { setDisconnected(t(AppText.Key.STREAM_ENDED)) }
                 }
             } catch (videoError: Exception) {
-                streamInput?.close()
+                runCatching { streamInput?.close() }
                 streamInput = null
                 if (h264Rendered) {
                     if (generation == streamGeneration) {
@@ -737,30 +889,6 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
     }
 
     private fun evenDimension(value: Int): Int = value.coerceAtLeast(2).let { it - (it % 2) }
-
-    private fun compactDisplayAdapter(labels: List<String>): ArrayAdapter<String> {
-        return object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, labels) {
-            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-                return displaySpinnerText(getItem(position).orEmpty(), isDropdown = false)
-            }
-
-            override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View {
-                return displaySpinnerText(getItem(position).orEmpty(), isDropdown = true)
-            }
-        }
-    }
-
-    private fun displaySpinnerText(text: String, isDropdown: Boolean): TextView {
-        return TextView(this).apply {
-            this.text = text
-            textSize = if (isDropdown) 14f else 12f
-            setTextColor(if (isDropdown) 0xFF111827.toInt() else 0xFF64748B.toInt())
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(4), 0, dp(4), 0)
-        }
-    }
 
     private fun loadQuickActions(client: ApiClient) {
         executor.execute {
@@ -944,28 +1072,28 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         sendControl(JSONObject().put("type", "relativeMove").put("deltaX", deltaX).put("deltaY", deltaY), showSentStatus = false)
     }
 
-    override fun onCurrentTap() {
-        sendControl(JSONObject().put("type", "clickCurrent"))
+    override fun onCurrentTap(x: Int, y: Int, imageWidth: Int, imageHeight: Int) {
+        sendControl(JSONObject().put("type", "tap").put("x", x).put("y", y).putScreen(imageWidth, imageHeight))
     }
 
-    override fun onCurrentDoubleTap() {
-        sendControl(JSONObject().put("type", "doubleClickCurrent"))
+    override fun onCurrentDoubleTap(x: Int, y: Int, imageWidth: Int, imageHeight: Int) {
+        sendControl(JSONObject().put("type", "doubleTap").put("x", x).put("y", y).putScreen(imageWidth, imageHeight))
     }
 
-    override fun onCurrentRightClick() {
-        sendControl(JSONObject().put("type", "rightClickCurrent"))
+    override fun onCurrentRightClick(x: Int, y: Int, imageWidth: Int, imageHeight: Int) {
+        sendControl(JSONObject().put("type", "rightClick").put("x", x).put("y", y).putScreen(imageWidth, imageHeight))
     }
 
-    override fun onCurrentDragStart() {
-        sendControl(JSONObject().put("type", "mouseDownCurrent"), showSentStatus = false)
+    override fun onCurrentDragStart(x: Int, y: Int, imageWidth: Int, imageHeight: Int) {
+        sendControl(JSONObject().put("type", "mouseDown").put("x", x).put("y", y).putScreen(imageWidth, imageHeight), showSentStatus = false)
     }
 
     override fun onCurrentDragMove(deltaX: Int, deltaY: Int) {
         sendControl(JSONObject().put("type", "relativeDrag").put("deltaX", deltaX).put("deltaY", deltaY), showSentStatus = false)
     }
 
-    override fun onCurrentDragEnd() {
-        sendControl(JSONObject().put("type", "mouseUpCurrent"), showSentStatus = false)
+    override fun onCurrentDragEnd(x: Int, y: Int, imageWidth: Int, imageHeight: Int) {
+        sendControl(JSONObject().put("type", "mouseUp").put("x", x).put("y", y).putScreen(imageWidth, imageHeight), showSentStatus = false)
     }
 
     override fun onScroll(deltaX: Int, deltaY: Int) {
@@ -1044,10 +1172,11 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
     }
 
     private fun JSONObject.withDisplayContext(): JSONObject {
+        val source = selectedCaptureSource
         val display = remoteDisplays.firstOrNull { it.id == selectedDisplayId }
-        val width = optInt("screenWidth", lastScreenWidth.takeIf { it > 0 } ?: display?.width ?: 0)
-        val height = optInt("screenHeight", lastScreenHeight.takeIf { it > 0 } ?: display?.height ?: 0)
-        selectedDisplayId?.takeIf { it.isNotBlank() }?.let { put("displayId", it) }
+        val width = optInt("screenWidth", source?.width?.takeIf { it > 0 } ?: lastScreenWidth.takeIf { it > 0 } ?: display?.width ?: 0)
+        val height = optInt("screenHeight", source?.height?.takeIf { it > 0 } ?: lastScreenHeight.takeIf { it > 0 } ?: display?.height ?: 0)
+        CaptureSourceUi.displayIdFor(source)?.takeIf { it.isNotBlank() }?.let { put("displayId", it) }
         put("screenWidth", width)
         put("screenHeight", height)
         return this
@@ -1215,7 +1344,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         renderQuickTexts(lastQuickTexts)
         renderCommands(lastCommands)
         renderShortcuts(lastShortcuts)
-        if (displayContainer.visibility == View.VISIBLE) renderDisplays(remoteDisplays)
+        if (displayContainer.visibility == View.VISIBLE) renderCaptureSources(remoteCaptureSources)
         updateConnectionUi()
         updateModeButton()
     }
@@ -1229,7 +1358,7 @@ class MainActivity : Activity(), RemoteScreenView.Listener {
         if (::configEditButton.isInitialized) configEditButton.text = t(AppText.Key.AUTH)
         if (::discoverButton.isInitialized) discoverButton.text = t(AppText.Key.FIND_SERVER)
         if (::scanButton.isInitialized) scanButton.text = t(AppText.Key.SCAN_PAIRING)
-        if (::displayLabel.isInitialized) displayLabel.text = t(AppText.Key.DISPLAY)
+        if (::displayLabel.isInitialized) displayLabel.text = t(AppText.Key.CAPTURE_SOURCE)
         if (::scrollUpButton.isInitialized) scrollUpButton.text = t(AppText.Key.SCROLL_UP)
         if (::scrollDownButton.isInitialized) scrollDownButton.text = t(AppText.Key.SCROLL_DOWN)
         if (::textInput.isInitialized) textInput.hint = t(AppText.Key.TEXT_TO_SEND)
@@ -1399,3 +1528,20 @@ private fun JSONObject.putScreen(width: Int, height: Int): JSONObject {
 }
 
 private fun Exception.shortMessage(): String = message?.take(140) ?: javaClass.simpleName
+
+private fun List<RemoteDisplay>.toCaptureSources(): List<RemoteCaptureSource> {
+    return map {
+        RemoteCaptureSource(
+            id = "display:${it.id}",
+            type = "display",
+            name = it.name,
+            appName = null,
+            x = it.x,
+            y = it.y,
+            width = it.width,
+            height = it.height,
+            scale = it.scale,
+            isMain = it.isMain
+        )
+    }
+}
