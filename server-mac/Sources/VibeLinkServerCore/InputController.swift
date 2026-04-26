@@ -5,29 +5,40 @@ import Foundation
 
 public enum InputController {
     public static func perform(_ request: ControlRequest) throws {
+        try perform(request, captureSource: nil)
+    }
+
+    public static func perform(_ request: ControlRequest, captureSource: CaptureSource?) throws {
+        if captureSource?.type == .window, shouldFocusWindowSource(for: request.type) {
+            WindowFocusController().activate(source: captureSource)
+        }
         switch request.type {
         case "move":
-            try move(request)
+            try move(request, captureSource: captureSource)
         case "relativeMove":
             relativeMove(deltaX: request.deltaX ?? 0, deltaY: request.deltaY ?? 0, dragged: false)
         case "tap":
-            try click(request, button: .left, count: 1)
+            try click(request, captureSource: captureSource, button: .left, count: 1)
         case "clickCurrent":
             clickCurrent(button: .left, count: 1)
         case "doubleTap":
-            try click(request, button: .left, count: 2)
+            try click(request, captureSource: captureSource, button: .left, count: 2)
         case "doubleClickCurrent":
             clickCurrent(button: .left, count: 2)
         case "rightClick":
-            try click(request, button: .right, count: 1)
+            try click(request, captureSource: captureSource, button: .right, count: 1)
         case "rightClickCurrent":
             clickCurrent(button: .right, count: 1)
         case "drag":
-            try drag(request)
+            try drag(request, captureSource: captureSource)
+        case "mouseDown":
+            try mouseDown(request, captureSource: captureSource)
         case "mouseDownCurrent":
             mouseDownCurrent()
         case "relativeDrag":
             relativeMove(deltaX: request.deltaX ?? 0, deltaY: request.deltaY ?? 0, dragged: true)
+        case "mouseUp":
+            try mouseUp(request, captureSource: captureSource)
         case "mouseUpCurrent":
             mouseUpCurrent()
         case "scroll":
@@ -84,8 +95,8 @@ public enum InputController {
         try perform(request)
     }
 
-    private static func click(_ request: ControlRequest, button: CGMouseButton, count: Int) throws {
-        let point = try point(x: request.x, y: request.y, request: request)
+    private static func click(_ request: ControlRequest, captureSource: CaptureSource?, button: CGMouseButton, count: Int) throws {
+        let point = try point(x: request.x, y: request.y, request: request, captureSource: captureSource)
         click(point: point, button: button, count: count)
     }
 
@@ -106,8 +117,8 @@ public enum InputController {
         }
     }
 
-    private static func move(_ request: ControlRequest) throws {
-        let point = try point(x: request.x, y: request.y, request: request)
+    private static func move(_ request: ControlRequest, captureSource: CaptureSource?) throws {
+        let point = try point(x: request.x, y: request.y, request: request, captureSource: captureSource)
         postMouse(type: .mouseMoved, point: point, button: .left, clickState: 0)
     }
 
@@ -125,9 +136,19 @@ public enum InputController {
         postMouse(type: .leftMouseUp, point: currentMousePoint(), button: .left, clickState: 1)
     }
 
-    private static func drag(_ request: ControlRequest) throws {
-        let from = try point(x: request.fromX, y: request.fromY, request: request)
-        let to = try point(x: request.toX, y: request.toY, request: request)
+    private static func mouseDown(_ request: ControlRequest, captureSource: CaptureSource?) throws {
+        let point = try point(x: request.x, y: request.y, request: request, captureSource: captureSource)
+        postMouse(type: .leftMouseDown, point: point, button: .left, clickState: 1)
+    }
+
+    private static func mouseUp(_ request: ControlRequest, captureSource: CaptureSource?) throws {
+        let point = try point(x: request.x, y: request.y, request: request, captureSource: captureSource)
+        postMouse(type: .leftMouseUp, point: point, button: .left, clickState: 1)
+    }
+
+    private static func drag(_ request: ControlRequest, captureSource: CaptureSource?) throws {
+        let from = try point(x: request.fromX, y: request.fromY, request: request, captureSource: captureSource)
+        let to = try point(x: request.toX, y: request.toY, request: request, captureSource: captureSource)
         let duration = max(request.durationMs ?? 250, 1)
         let steps = max(duration / 16, 1)
 
@@ -174,13 +195,17 @@ public enum InputController {
         pasteboard.setString(text, forType: .string)
     }
 
-    private static func point(x: Double?, y: Double?, request: ControlRequest) throws -> CGPoint {
+    private static func point(x: Double?, y: Double?, request: ControlRequest, captureSource: CaptureSource?) throws -> CGPoint {
         guard let x, let y else { throw InputError.missingField("x/y") }
         guard let sourceWidth = request.screenWidth,
               let sourceHeight = request.screenHeight,
               sourceWidth > 0,
               sourceHeight > 0 else {
             return CGPoint(x: x, y: y)
+        }
+
+        if let captureSource {
+            return mapPoint(x: x, y: y, sourceWidth: sourceWidth, sourceHeight: sourceHeight, captureSource: captureSource)
         }
 
         let screen = ScreenProvider.currentScreenInfo()
@@ -203,6 +228,31 @@ public enum InputController {
             x: Double(display.x) + normalizedX * Double(display.width),
             y: Double(display.y) + normalizedY * Double(display.height)
         )
+    }
+
+    static func mapPoint(x: Double, y: Double, sourceWidth: Double, sourceHeight: Double, captureSource: CaptureSource) -> CGPoint {
+        let normalizedX = x / sourceWidth
+        let normalizedY = y / sourceHeight
+        return CGPoint(
+            x: Double(captureSource.x) + normalizedX * Double(captureSource.width),
+            y: Double(captureSource.y) + normalizedY * Double(captureSource.height)
+        )
+    }
+
+    static func shouldFocusWindowSource(for type: String) -> Bool {
+        switch type {
+        case "tap", "clickCurrent",
+            "doubleTap", "doubleClickCurrent",
+            "rightClick", "rightClickCurrent",
+            "drag", "mouseDown", "mouseDownCurrent",
+            "mouseUp", "mouseUpCurrent",
+            "text", "backspace", "enter", "cmdEnter",
+            "copy", "paste", "selectAll", "escape",
+            "interrupt", "undo", "close":
+            return true
+        default:
+            return false
+        }
     }
 
     private static func postMouse(type: CGEventType, point: CGPoint, button: CGMouseButton, clickState: Int) {

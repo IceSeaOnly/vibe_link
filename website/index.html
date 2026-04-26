@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="VibeLink is a phone-first remote development controller for macOS and Android.">
+  <meta name="description" content="VibeLink is a phone-first remote development controller for macOS and Android with display/window streaming, quick input, and command presets.">
   <title>VibeLink | Phone-first remote development controller</title>
   <link rel="icon" href="assets/vibelink-logo.png">
   <link rel="stylesheet" href="styles.css">
@@ -52,13 +52,13 @@
             <dd data-i18n="proofThreeLabel">English and Chinese UI</dd>
           </div>
           <div>
-            <dt data-i18n="proofFourValue">878KB</dt>
+            <dt data-i18n="proofFourValue">1.2MB</dt>
             <dd data-i18n="proofFourLabel">tiny Android APK</dd>
           </div>
         </dl>
       </div>
       <figure class="hero-device" aria-label="VibeLink mobile app preview">
-        <img id="heroAppImage" src="assets/en/app.png" alt="VibeLink Android app screenshot">
+        <img id="heroAppImage" src="assets/en/app-latest.jpg" alt="VibeLink Android app streaming a Mac">
       </figure>
     </section>
 
@@ -71,8 +71,8 @@
       <div class="feature-grid" aria-label="VibeLink core features">
         <article class="feature-item">
           <span class="icon" aria-hidden="true">⌁</span>
-          <h3 data-i18n="featureScreenTitle">Live Mac screen</h3>
-          <p data-i18n="featureScreenCopy">MJPEG screen streaming with display selection, zooming, panning, and mobile interaction modes.</p>
+          <h3 data-i18n="featureScreenTitle">Live Mac stream</h3>
+          <p data-i18n="featureScreenCopy">H.264 streaming for full displays or single windows, with zooming, panning, source switching, and fallback streams.</p>
         </article>
         <article class="feature-item">
           <span class="icon" aria-hidden="true">⌘</span>
@@ -87,7 +87,7 @@
         <article class="feature-item">
           <span class="icon" aria-hidden="true">◌</span>
           <h3 data-i18n="featureTinyTitle">Tiny client</h3>
-          <p data-i18n="featureTinyCopy">The Android APK is only 878KB, keeping the phone side fast to download, install, and update.</p>
+          <p data-i18n="featureTinyCopy">The Android APK is about 1.2MB, keeping the phone side fast to download, install, and update.</p>
         </article>
       </div>
     </section>
@@ -96,9 +96,25 @@
       <div class="showcase-copy">
         <p class="eyebrow" data-i18n="showcaseEyebrow">Phone-native control surface</p>
         <h2 id="showcase-title" data-i18n="showcaseTitle">Built around the operations developers repeat from a phone.</h2>
-        <p data-i18n="showcaseCopy">The client keeps the screen visible while surfacing the actions that matter: quick text, command execution, shortcut points, display switching, scroll controls, and precise pointer modes.</p>
+        <p data-i18n="showcaseCopy">The client keeps the stream visible while surfacing the actions that matter: source switching, quick text, command execution, shortcut points, scroll controls, and precise pointer modes.</p>
       </div>
       <div class="screenshot-rail" aria-label="Product screenshots">
+        <figure class="phone-shot">
+          <img id="shotSourcePicker" src="assets/en/source-picker.jpg" alt="Source picker screen">
+          <figcaption data-i18n="shotSourcePicker">Touch-friendly source picker</figcaption>
+        </figure>
+        <figure>
+          <img id="shotSourceAdmin" src="assets/en/source.png" alt="Admin source management">
+          <figcaption data-i18n="shotSourceAdmin">Display and window sources</figcaption>
+        </figure>
+        <figure>
+          <img id="shotStatusAdmin" src="assets/en/status.png" alt="Admin permission status">
+          <figcaption data-i18n="shotStatusAdmin">macOS permission status</figcaption>
+        </figure>
+        <figure>
+          <img id="shotPairingAdmin" src="assets/en/pairing.png" alt="Admin pairing QR code">
+          <figcaption data-i18n="shotPairingAdmin">LAN discovery and QR pairing</figcaption>
+        </figure>
         <figure>
           <img id="shotControls" src="assets/en/control-buttons.png" alt="Control buttons screen">
           <figcaption data-i18n="shotControls">Control buttons</figcaption>
@@ -164,7 +180,7 @@
         <p data-i18n="workflowCopy">VibeLink supports the rhythm of AI-assisted development: keep an eye on progress, give a targeted instruction, run a trusted preset, click through a blocked prompt, and return to whatever you were doing.</p>
       </div>
       <ol class="workflow-steps">
-        <li><span>01</span><strong data-i18n="stepOneTitle">Watch the Mac</strong><p data-i18n="stepOneCopy">Stream the active display and inspect IDEs, browsers, terminals, or dialogs.</p></li>
+        <li><span>01</span><strong data-i18n="stepOneTitle">Watch the Mac</strong><p data-i18n="stepOneCopy">Stream a full display or a selected window and inspect IDEs, browsers, terminals, or dialogs.</p></li>
         <li><span>02</span><strong data-i18n="stepTwoTitle">Send the right input</strong><p data-i18n="stepTwoCopy">Paste a prompt, trigger a shortcut, or control the pointer with phone-friendly modes.</p></li>
         <li><span>03</span><strong data-i18n="stepThreeTitle">Run known commands</strong><p data-i18n="stepThreeCopy">Execute configured commands and read status without exposing arbitrary shell input.</p></li>
         <li><span>04</span><strong data-i18n="stepFourTitle">Let the session continue</strong><p data-i18n="stepFourCopy">Step away again while the Mac keeps building, testing, or running the agent.</p></li>

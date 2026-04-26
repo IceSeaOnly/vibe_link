@@ -50,6 +50,51 @@ public struct DisplayInfo: Codable, Sendable {
     public let isMain: Bool
 }
 
+public enum CaptureSourceType: String, Codable, Sendable {
+    case display
+    case window
+}
+
+public struct CaptureSource: Codable, Sendable, Equatable {
+    public let id: String
+    public let type: CaptureSourceType
+    public let name: String
+    public let appName: String?
+    public let x: Int
+    public let y: Int
+    public let width: Int
+    public let height: Int
+    public let scale: Double
+    public let isMain: Bool
+
+    public init(id: String, type: CaptureSourceType, name: String, appName: String?, x: Int, y: Int, width: Int, height: Int, scale: Double, isMain: Bool) {
+        self.id = id
+        self.type = type
+        self.name = name
+        self.appName = appName
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.scale = scale
+        self.isMain = isMain
+    }
+}
+
+public struct CaptureSourcesResponse: Codable, Sendable {
+    public let ok: Bool
+    public let sources: [CaptureSource]
+    public let selected: CaptureSource?
+}
+
+public struct CaptureSourceSelectionRequest: Codable, Sendable {
+    public let id: String
+
+    public init(id: String) {
+        self.id = id
+    }
+}
+
 public struct OKResponse: Codable {
     public let ok: Bool
 }

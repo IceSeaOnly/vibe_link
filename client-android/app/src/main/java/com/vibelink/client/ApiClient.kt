@@ -32,6 +32,14 @@ class ApiClient(
         return getJsonArray("/api/displays").parseDisplays()
     }
 
+    fun getCaptureSources(): CaptureSourcesInfo {
+        return getJsonObject("/api/capture-sources").parseCaptureSourcesInfo()
+    }
+
+    fun selectCaptureSource(id: String): CaptureSourcesInfo {
+        return postJson("/api/capture-source", JSONObject().put("id", id)).parseCaptureSourcesInfo()
+    }
+
     fun openStream(displayId: String? = null): InputStream {
         val encoded = URLEncoder.encode(token, "UTF-8")
         val displayQuery = displayId
@@ -213,6 +221,28 @@ private fun JSONObject.parseShortcutButton(): ShortcutButton {
         screenWidth = optDouble("screenWidth"),
         screenHeight = optDouble("screenHeight"),
         requiresConfirmation = optBoolean("requiresConfirmation", false)
+    )
+}
+
+private fun JSONObject.parseCaptureSource(): RemoteCaptureSource {
+    return RemoteCaptureSource(
+        id = optString("id"),
+        type = optString("type"),
+        name = optString("name", optString("id")),
+        appName = if (has("appName") && !isNull("appName")) optString("appName") else null,
+        x = optInt("x", 0),
+        y = optInt("y", 0),
+        width = optInt("width", 0),
+        height = optInt("height", 0),
+        scale = optDouble("scale", 1.0),
+        isMain = optBoolean("isMain", false)
+    )
+}
+
+private fun JSONObject.parseCaptureSourcesInfo(): CaptureSourcesInfo {
+    return CaptureSourcesInfo(
+        sources = optJSONArray("sources")?.mapObjects { it.parseCaptureSource() }.orEmpty(),
+        selected = optJSONObject("selected")?.parseCaptureSource()
     )
 }
 

@@ -1,6 +1,7 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import ImageIO
 
 public enum ScreenProvider {
     public static func currentScreenInfo() -> ScreenInfo {
@@ -126,6 +127,20 @@ public enum ScreenCapture {
         let errorData = error.fileHandleForReading.readDataToEndOfFile()
         let message = String(data: errorData, encoding: .utf8) ?? "screencapture failed"
         throw CaptureError.failed(message)
+    }
+
+    public static func jpegData(from image: CGImage) throws -> Data {
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, "public.jpeg" as CFString, 1, nil) else {
+            throw CaptureError.failed("CGImageDestinationCreateWithData failed")
+        }
+        CGImageDestinationAddImage(destination, image, [
+            kCGImageDestinationLossyCompressionQuality: 0.72
+        ] as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else {
+            throw CaptureError.failed("CGImageDestinationFinalize failed")
+        }
+        return data as Data
     }
 }
 

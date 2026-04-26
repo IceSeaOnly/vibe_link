@@ -18,6 +18,8 @@ public final class AppText {
         NOT_CONNECTED,
         DISPLAY,
         DEFAULT_STREAM,
+        CAPTURE_SOURCE,
+        DEFAULT_SOURCE,
         SCROLL_UP,
         SCROLL_DOWN,
         TEXT_TO_SEND,
@@ -96,6 +98,8 @@ public final class AppText {
         put(Key.NOT_CONNECTED, "Not connected", "未连接");
         put(Key.DISPLAY, "Display", "显示器");
         put(Key.DEFAULT_STREAM, "Default stream", "默认画面");
+        put(Key.CAPTURE_SOURCE, "Source", "串流源");
+        put(Key.DEFAULT_SOURCE, "Default source", "默认串流源");
         put(Key.SCROLL_UP, "Scroll Up", "向上滚动");
         put(Key.SCROLL_DOWN, "Scroll Down", "向下滚动");
         put(Key.TEXT_TO_SEND, "Text to send", "待发送文本");
@@ -189,7 +193,7 @@ public final class AppText {
     }
 
     public static String commandName(String id, String fallback, AppLanguage language) {
-        return named(COMMAND_EN, COMMAND_ZH, id, fallback, language);
+        return namedOnlyWhenFallbackIsBuiltIn(COMMAND_EN, COMMAND_ZH, id, fallback, language);
     }
 
     public static String shortcutName(String id, String fallback, AppLanguage language) {
@@ -199,6 +203,16 @@ public final class AppText {
     private static String named(Map<String, String> en, Map<String, String> zh, String key, String fallback, AppLanguage language) {
         String value = language == AppLanguage.ZH ? zh.get(key) : en.get(key);
         return value == null || value.isEmpty() ? fallback : value;
+    }
+
+    private static String namedOnlyWhenFallbackIsBuiltIn(Map<String, String> en, Map<String, String> zh, String key, String fallback, AppLanguage language) {
+        String english = en.get(key);
+        String chinese = zh.get(key);
+        boolean isBuiltInName = fallback == null || fallback.isEmpty() || fallback.equals(english) || fallback.equals(chinese);
+        if (!isBuiltInName) {
+            return fallback;
+        }
+        return named(en, zh, key, fallback, language);
     }
 
     private static Map<Key, String> table(AppLanguage language) {

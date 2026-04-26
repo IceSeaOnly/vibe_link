@@ -3,10 +3,12 @@ import Foundation
 public final class AdminRouter: HTTPRouting, @unchecked Sendable {
     private let config: ServerConfig
     private let store: AdminConfigStore
+    private let captureSources: CaptureSourceManager
 
-    public init(config: ServerConfig, store: AdminConfigStore) {
+    public init(config: ServerConfig, store: AdminConfigStore, captureSources: CaptureSourceManager = CaptureSourceManager()) {
         self.config = config
         self.store = store
+        self.captureSources = captureSources
     }
 
     public func route(_ request: HTTPRequest) async -> HTTPResponse {
@@ -19,6 +21,17 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
         case ("GET", "/admin/api/pairing-info"):
             guard authorized(request) else { return unauthorized() }
             return HTTPResponse.json(PairingProvider.info(config: config))
+        case ("GET", "/admin/api/capture-sources"):
+            guard authorized(request) else { return unauthorized() }
+            return HTTPResponse.json(captureSources.response())
+        case ("POST", "/admin/api/capture-source"):
+            guard authorized(request) else { return unauthorized() }
+            do {
+                let selection = try JSONCoding.decoder.decode(CaptureSourceSelectionRequest.self, from: request.body)
+                return HTTPResponse.json(try captureSources.select(id: selection.id))
+            } catch {
+                return HTTPResponse.json(ErrorResponse(ok: false, error: error.localizedDescription), status: 400, reason: "Bad Request")
+            }
         case ("GET", "/admin/api/pairing-qr"):
             guard authorized(request) else { return unauthorized() }
             do {
@@ -107,6 +120,11 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
         .shortcut-body{display:grid;grid-template-columns:1fr 1fr;gap:8px}
         .shortcut-body .wide{grid-column:1 / -1}
         .shortcut input{padding:8px 9px;font-size:12px}
+        .source-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+        .source-card{border:1px solid #dbeafe;background:#f8fbff;border-radius:14px;padding:12px;text-align:left;color:#0f172a}
+        .source-card.active{border-color:#2563eb;background:#eff6ff;box-shadow:0 8px 20px rgba(37,99,235,.12)}
+        .source-name{font-size:14px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .source-meta{margin-top:4px;color:#64748b;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .status-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
         .status-card{border:1px solid #dbeafe;background:#f8fbff;border-radius:14px;padding:14px}
         .status-card.ok{border-color:#bbf7d0;background:#f0fdf4}
@@ -140,6 +158,7 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
           .command-body{grid-template-columns:1fr}
           .shortcut-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
           .shortcut-body{grid-template-columns:1fr}
+          .source-list{grid-template-columns:1fr}
           .status-grid,.pairing-layout{grid-template-columns:1fr}
         }
       </style>
@@ -179,6 +198,7 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
             <button id="tabButton-quick" class="tab-button" onclick="showTab('quick')" data-i18n="tabQuick">Quick Replies</button>
             <button id="tabButton-commands" class="tab-button" onclick="showTab('commands')" data-i18n="tabCommands">Commands</button>
             <button id="tabButton-shortcuts" class="tab-button" onclick="showTab('shortcuts')" data-i18n="tabShortcuts">Shortcut Buttons</button>
+            <button id="tabButton-capture" class="tab-button" onclick="showTab('capture')" data-i18n="tabCapture">Capture Source</button>
             <button id="tabButton-status" class="tab-button" onclick="showTab('status')" data-i18n="tabStatus">Status</button>
             <button id="tabButton-pairing" class="tab-button" onclick="showTab('pairing')" data-i18n="tabPairing">Pairing</button>
           </nav>
@@ -219,6 +239,17 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
               <div class="muted mt-1" data-i18n="shortcutsDescription">Manage mobile shortcut click points. The mobile app can also add them by dragging a virtual pointer on the screen.</div>
             </div>
             <div id="shortcutButtons" class="list shortcut-grid"></div>
+          </section>
+
+          <section id="tab-capture" class="tab-panel hidden p-5">
+            <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 class="text-xl font-black" data-i18n="captureTitle">Capture Source</h2>
+                <div class="muted mt-1" data-i18n="captureDescription">Choose a display or a single window for the screen stream. Window capture uses ScreenCaptureKit.</div>
+              </div>
+              <button class="ghost" onclick="loadCaptureSources()" data-i18n="refresh">Refresh</button>
+            </div>
+            <div id="captureSources" class="source-list"></div>
           </section>
 
           <section id="tab-status" class="tab-panel hidden p-5">
@@ -270,6 +301,7 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
             tabQuick:'Quick Replies',
             tabCommands:'Commands',
             tabShortcuts:'Shortcut Buttons',
+            tabCapture:'Capture Source',
             tabStatus:'Status',
             tabPairing:'Pairing',
             controlTitle:'Control Buttons',
@@ -280,6 +312,11 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
             commandsDescription:'Predefine commands shown in the mobile Commands area. Tapping one runs it on the computer server.',
             shortcutsTitle:'Shortcut Buttons',
             shortcutsDescription:'Manage mobile shortcut click points. The mobile app can also add them by dragging a virtual pointer on the screen.',
+            captureTitle:'Capture Source',
+            captureDescription:'Choose a display or a single window for the screen stream. Window capture uses ScreenCaptureKit.',
+            displaySource:'Display',
+            windowSource:'Window',
+            selected:'Selected',
             statusTitle:'Permissions',
             statusDescription:'Check macOS permissions required by screen capture and remote input.',
             pairingTitle:'Pairing',
@@ -319,6 +356,7 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
             tabQuick:'快捷回复',
             tabCommands:'命令',
             tabShortcuts:'快捷按钮',
+            tabCapture:'采集来源',
             tabStatus:'状态',
             tabPairing:'配对',
             controlTitle:'控制按钮',
@@ -329,6 +367,11 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
             commandsDescription:'预先定义移动端命令区域展示的命令，点击后会在电脑服务端执行。',
             shortcutsTitle:'快捷按钮',
             shortcutsDescription:'管理移动端快捷点击点。移动端也可以通过添加快捷按钮在屏幕上拖动虚拟指针录入。',
+            captureTitle:'采集来源',
+            captureDescription:'选择串流整个显示器或单个窗口。窗口采集使用 ScreenCaptureKit。',
+            displaySource:'显示器',
+            windowSource:'窗口',
+            selected:'已选择',
             statusTitle:'权限',
             statusDescription:'检查屏幕采集和远程输入需要的 macOS 权限。',
             pairingTitle:'配对',
@@ -362,7 +405,7 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
         let token = localStorage.getItem('vibelinkAdminToken') || '';
         let config = null;
         let activeTab = 'control';
-        const tabNames = ['control','quick','commands','shortcuts','status','pairing'];
+        const tabNames = ['control','quick','commands','shortcuts','capture','status','pairing'];
         document.getElementById('token').value = token;
         document.getElementById('languageSelect').value = language;
         applyLanguage();
@@ -386,6 +429,7 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
           document.getElementById('saveBar').classList.remove('hidden');
           document.getElementById('saveBar').classList.add('flex');
           render();
+          loadCaptureSources();
           loadPermissions();
           loadPairing();
           showTab(activeTab);
@@ -447,6 +491,35 @@ public final class AdminRouter: HTTPRouting, @unchecked Sendable {
           });
         }
         function removeShortcutButton(i){config.shortcutButtons.splice(i,1);renderShortcutButtons();}
+        async function loadCaptureSources(){
+          const root=document.getElementById('captureSources');
+          if(!root) return;
+          const r=await fetch('/admin/api/capture-sources',{headers:headers()});
+          if(!r.ok){root.innerHTML='';return;}
+          const data=await r.json();
+          renderCaptureSources(data);
+        }
+        function renderCaptureSources(data){
+          const root=document.getElementById('captureSources');
+          if(!root) return;
+          const selectedId=data.selected&&data.selected.id;
+          root.innerHTML='';
+          (data.sources||[]).forEach(source=>{
+            const el=document.createElement('button');
+            el.className='source-card '+(source.id===selectedId?'active':'');
+            const typeLabel=source.type==='window'?t('windowSource'):t('displaySource');
+            const selected=source.id===selectedId?' · '+t('selected'):'';
+            const dims=(source.width||0)+'×'+(source.height||0);
+            const app=source.appName?source.appName+' · ':'';
+            el.innerHTML='<div class="source-name">'+escapeHtml(source.name)+'</div><div class="source-meta">'+escapeHtml(typeLabel+selected)+'</div><div class="source-meta">'+escapeHtml(app+dims+' · '+source.id)+'</div>';
+            el.onclick=()=>selectCaptureSource(source.id);
+            root.appendChild(el);
+          });
+        }
+        async function selectCaptureSource(id){
+          const r=await fetch('/admin/api/capture-source',{method:'POST',headers:headers(),body:JSON.stringify({id})});
+          if(r.ok) renderCaptureSources(await r.json());
+        }
         async function loadPermissions(){
           const root=document.getElementById('permissions');
           if(!root) return;
